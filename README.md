@@ -45,7 +45,7 @@ Open: http://localhost:5173
 ### Step 3: Connect to Vue app
 Open `src/composables/useBookings.js` and replace:
 ```js
-export const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec'
+export const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzCskNjuFmWOcJtVVgfaWPfyaDQi4qV-pY81hCQ93xSI8xSA0aYExQQhxilaqVAKQopnA/exec'
 ```
 with your actual URL.
 
