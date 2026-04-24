@@ -170,8 +170,8 @@ const dateInputValue = computed(() => {
 })
 
 // ── helpers ──────────────────────────────────────────────────────────────────
-function loadBookings() {
-  bookings.value = getBookingsForDate(currentDate.value)
+async function loadBookings() {
+  bookings.value = await getBookingsForDate(currentDate.value)
 }
 
 function getBooking(time, chairId) {
@@ -208,8 +208,8 @@ function onDatePick(e) {
   showDatePicker.value = false
 }
 
-watch(currentDate, () => {
-  loadBookings()
+watch(currentDate, async () => {
+  await loadBookings()
   rescheduleReminders()
 })
 
@@ -278,7 +278,7 @@ function rescheduleReminders() {
 // ── init ──────────────────────────────────────────────────────────────────────
 onMounted(async () => {
   await requestNotificationPermission()
-  loadBookings()
+  await loadBookings()
   rescheduleReminders()
 })
 </script>
