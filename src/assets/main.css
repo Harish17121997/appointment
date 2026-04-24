@@ -1,0 +1,125 @@
+/* ── Reset & Base ─────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --sidebar-w: 240px;
+  --topbar-h: 64px;
+  --color-primary: #1a1a2e;
+  --color-accent: #c8975a;
+  --color-accent-light: #f5ead8;
+  --color-hair: #1e4a8c;
+  --color-hair-bg: #e8f0fc;
+  --color-beauty: #8c1e5a;
+  --color-beauty-bg: #fce8f0;
+  --color-success: #1a7a4a;
+  --color-success-bg: #e6f5ec;
+  --color-surface: #ffffff;
+  --color-bg: #f4f2ee;
+  --color-border: #e5e2dc;
+  --color-text: #1a1a1a;
+  --color-text-2: #5a5a5a;
+  --color-text-3: #9a9a9a;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.07);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.10);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --font-display: 'Playfair Display', serif;
+  --font-body: 'DM Sans', sans-serif;
+}
+
+html, body, #app {
+  height: 100%;
+  font-family: var(--font-body);
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Scrollbar ────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 10px; }
+
+/* ── Utilities ────────────────────────────────────────────────── */
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+
+/* ── Buttons ──────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 18px; border-radius: var(--radius-sm);
+  font-family: var(--font-body); font-size: 13px; font-weight: 500;
+  cursor: pointer; border: none; transition: all 0.15s; white-space: nowrap;
+}
+.btn-primary { background: var(--color-primary); color: #fff; }
+.btn-primary:hover { background: #2d2d4e; }
+.btn-accent { background: var(--color-accent); color: #fff; }
+.btn-accent:hover { background: #b8854a; }
+.btn-ghost { background: transparent; color: var(--color-text-2); border: 1px solid var(--color-border); }
+.btn-ghost:hover { background: var(--color-border); }
+.btn-danger { background: #fce8e8; color: #8c1e1e; border: none; }
+.btn-danger:hover { background: #f8d0d0; }
+.btn-wa { background: #25D366; color: #fff; }
+.btn-wa:hover { background: #1da851; }
+.btn-sm { padding: 6px 12px; font-size: 12px; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* ── Form inputs ──────────────────────────────────────────────── */
+.input {
+  width: 100%; padding: 10px 12px;
+  border: 1px solid var(--color-border); border-radius: var(--radius-sm);
+  font-family: var(--font-body); font-size: 14px; color: var(--color-text);
+  background: var(--color-surface); outline: none; transition: border 0.15s;
+}
+.input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px rgba(200,151,90,0.12); }
+.input.error { border-color: #d63031; }
+.form-group { margin-bottom: 14px; }
+.form-label { display: block; font-size: 12px; font-weight: 500; color: var(--color-text-2); margin-bottom: 5px; }
+.form-error { font-size: 11px; color: #d63031; margin-top: 4px; }
+
+/* ── Modal ────────────────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000; padding: 1rem;
+}
+.modal-box {
+  background: var(--color-surface); border-radius: var(--radius-lg);
+  width: 100%; max-width: 440px; max-height: 92vh; overflow-y: auto;
+  box-shadow: var(--shadow-md);
+}
+.modal-header {
+  padding: 1.25rem 1.5rem 0;
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 1rem;
+}
+.modal-title { font-family: var(--font-display); font-size: 18px; font-weight: 400; }
+.modal-sub { font-size: 12px; color: var(--color-text-2); margin-top: 3px; }
+.modal-body { padding: 1.25rem 1.5rem; }
+.modal-footer { padding: 0 1.5rem 1.25rem; display: flex; gap: 8px; }
+
+/* ── Tag / Chip ───────────────────────────────────────────────── */
+.chip {
+  display: inline-flex; align-items: center;
+  padding: 5px 10px; border-radius: 20px;
+  font-size: 11px; font-weight: 500;
+}
+.chip-hair { background: var(--color-hair-bg); color: var(--color-hair); }
+.chip-beauty { background: var(--color-beauty-bg); color: var(--color-beauty); }
+
+/* ── Toast ────────────────────────────────────────────────────── */
+.toast {
+  position: fixed; bottom: 24px; right: 24px; z-index: 2000;
+  background: var(--color-primary); color: #fff;
+  padding: 12px 20px; border-radius: var(--radius-md);
+  font-size: 13px; box-shadow: var(--shadow-md);
+  animation: slideIn 0.25s ease;
+}
+.toast.success { background: var(--color-success); }
+.toast.warning { background: #c8975a; }
+@keyframes slideIn {
+  from { transform: translateY(20px); opacity: 0; }
+  to   { transform: translateY(0); opacity: 1; }
+}
