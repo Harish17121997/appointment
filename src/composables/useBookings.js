@@ -2,7 +2,7 @@ import { ref } from 'vue'
 
 // ─── CONFIG ──────────────────────────────────────────────────────────────────
 // Replace this URL with your Google Apps Script Web App URL
-export const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec'
+export const APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzCskNjuFmWOcJtVVgfaWPfyaDQi4qV-pY81hCQ93xSI8xSA0aYExQQhxilaqVAKQopnA/exec'
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 export const TIME_SLOTS = [
@@ -60,33 +60,55 @@ export function useBookings() {
   }
 
   async function syncToSheet(payload) {
-    if (!APPS_SCRIPT_URL || APPS_SCRIPT_URL.includes('YOUR_SCRIPT_ID')) return
+    if (!APPS_SCRIPT_URL) return
     try {
-      await fetch(APPS_SCRIPT_URL, {
+      const res = await fetch(APPS_SCRIPT_URL, {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify(payload)
       })
+      const data = await res.json()
     } catch (e) {
-      console.warn('Sheet sync failed (offline?)', e)
+      console.error('❌ API Error:', e)
     }
-  }
+}
 
   async function addBooking(date, slotKey, booking) {
     isSaving.value = true
+    error.value = null
     try {
       const all = loadAll()
       if (!all[dateKey(date)]) all[dateKey(date)] = {}
-      all[dateKey(date)][slotKey] = {
+
+      // optional: prevent double booking
+      if (all[dateKey(date)][slotKey]) {
+        throw new Error('Slot already booked')
+      }
+      const newBooking = {
         ...booking,
         id: Date.now().toString(),
         createdAt: new Date().toISOString()
       }
+
+      all[dateKey(date)][slotKey] = newBooking
       saveAll(all)
-      await syncToSheet({ action: 'add', date: dateKey(date), slotKey, ...booking })
+
+      await syncToSheet({
+        action: 'add',
+        date: dateKey(date),
+        slotKey,
+        ...newBooking
+      })
+
       return true
+
     } catch (e) {
       error.value = e.message
+      console.error('❌ Booking failed:', e.message)
       return false
+
     } finally {
       isSaving.value = false
     }
