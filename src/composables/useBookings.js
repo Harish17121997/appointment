@@ -34,50 +34,124 @@ export const BEAUTY_SERVICES = [
 
 // ─── COMPOSABLE ──────────────────────────────────────────────────────────────
 export function useBookings() {
-  const isSaving = ref(false)
+  const isLoading = ref(false)
+  const isSaving  = ref(false)
+  const apiError  = ref('')
 
   function dateKey(date) {
     return new Date(date).toLocaleDateString('en-IN')
   }
 
-  // ✅ FETCH
+  // ─── FETCH bookings for a specific date ──────────────────────────────────
   async function getBookingsForDate(date) {
+    isLoading.value = true
+    apiError.value  = ''
     try {
-      const res = await fetch(`${API_URL}?action=fetch&date=${encodeURIComponent(dateKey(date))}`)
+      const res  = await fetch(`${API_URL}?action=fetch&date=${encodeURIComponent(dateKey(date))}`)
       const json = await res.json()
       return json.data || {}
     } catch (err) {
-      console.error(err)
+      console.error('Fetch error:', err)
+      apiError.value = 'Failed to load bookings. Check your connection.'
       return {}
+    } finally {
+      isLoading.value = false
     }
   }
 
-  // ✅ ADD
+  // ─── FETCH stats for dashboard (last 7 days + today counts) ──────────────
+  async function getStats() {
+    isLoading.value = true
+    apiError.value  = ''
+    try {
+      const res  = await fetch(`${API_URL}?action=stats`)
+      const json = await res.json()
+      if (json.success && json.stats) {
+        return json.stats
+      }
+      // fallback empty stats shape
+      return emptyStats()
+    } catch (err) {
+      console.error('Stats fetch error:', err)
+      apiError.value = 'Failed to load stats.'
+      return emptyStats()
+    } finally {
+      isLoading.value = false
+    }
+  }
+
+  function emptyStats() {
+    const last7 = []
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date()
+      d.setDate(d.getDate() - i)
+      last7.push({
+        label: d.toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric' }),
+        count: 0,
+        isToday: i === 0
+      })
+    }
+    return {
+      todayTotal: 0,
+      todayHair: 0,
+      todayBeauty: 0,
+      uniqueClients: 0,
+      totalAll: 0,
+      last7,
+      topServices: [],
+      todayBookings: []
+    }
+  }
+
+  // ─── ADD booking ──────────────────────────────────────────────────────────
   async function addBooking(date, slotKey, data) {
+    isSaving.value = true
+    apiError.value = ''
     try {
-      const url = `${API_URL}?action=add&date=${encodeURIComponent(dateKey(date))}&slotKey=${encodeURIComponent(slotKey)}&chairType=${encodeURIComponent(data.chairType)}&name=${encodeURIComponent(data.name)}&mobile=${encodeURIComponent(data.mobile)}&services=${encodeURIComponent(data.services)}&notes=${encodeURIComponent(data.notes || '')}`
-      await fetch(url)
-      return true
+      const params = new URLSearchParams({
+        action:    'add',
+        date:      dateKey(date),
+        slotKey,
+        chairType: data.chairType,
+        name:      data.name,
+        mobile:    data.mobile,
+        services:  data.services,
+        notes:     data.notes || '',
+        scheduleReminder: data.scheduleReminder ? '1' : '0'
+      })
+      const res  = await fetch(`${API_URL}?${params.toString()}`)
+      const json = await res.json()
+      return json.success !== false
     } catch (err) {
-      console.error(err)
+      console.error('Add booking error:', err)
+      apiError.value = 'Failed to save booking.'
       return false
+    } finally {
+      isSaving.value = false
     }
   }
 
-  // ✅ DELETE
+  // ─── DELETE booking ───────────────────────────────────────────────────────
   async function deleteBooking(date, slotKey) {
+    isLoading.value = true
     try {
-      await fetch(`${API_URL}?action=delete&date=${encodeURIComponent(dateKey(date))}&slotKey=${encodeURIComponent(slotKey)}`)
+      const params = new URLSearchParams({ action: 'delete', date: dateKey(date), slotKey })
+      await fetch(`${API_URL}?${params.toString()}`)
     } catch (err) {
-      console.error(err)
+      console.error('Delete error:', err)
+    } finally {
+      isLoading.value = false
     }
   }
 
   return {
+    isLoading,
     isSaving,
+    apiError,
     getBookingsForDate,
     addBooking,
     deleteBooking,
+    getStats,
     dateKey
   }
 }

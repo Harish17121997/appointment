@@ -1,42 +1,64 @@
 <template>
   <div class="appointments">
-    <!-- Date navigation bar -->
+
+    <!-- ── Full-page loading overlay ── -->
+    <transition name="fade">
+      <div v-if="isLoading" class="page-loader">
+        <div class="loader-box">
+          <div class="loader-spinner"></div>
+          <div class="loader-text">{{ loadingMsg }}</div>
+        </div>
+      </div>
+    </transition>
+
+    <!-- ── Error banner ── -->
+    <div v-if="apiError" class="error-bar">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      {{ apiError }}
+      <button class="error-retry" @click="loadBookings">Retry</button>
+    </div>
+
+    <!-- ── Date navigation ── -->
     <div class="date-nav">
       <div class="date-nav__controls">
-        <button class="date-nav-btn" @click="changeDate(-1)" title="Previous day">
+        <button class="date-nav-btn" @click="changeDate(-1)" title="Yesterday">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
-        <div class="date-display" @click="showDatePicker = true">
+
+        <div class="date-display" @click="openDatePicker">
           <div class="date-main">{{ formattedDate }}</div>
           <div class="date-day">{{ formattedDay }}</div>
         </div>
-        <button class="date-nav-btn" @click="changeDate(1)" title="Next day">
+        <!-- Hidden native date input — triggered programmatically -->
+        <input
+          ref="datePickerRef"
+          type="date"
+          class="date-input-hidden"
+          :value="dateInputValue"
+          @change="onDatePick"
+        />
+
+        <button class="date-nav-btn" @click="changeDate(1)" title="Tomorrow">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
         </button>
+
         <button v-if="!isToday" class="today-pill" @click="goToday">Today</button>
-        <span v-else class="today-badge">Today</span>
-        <input v-if="showDatePicker" type="date" class="date-input" :value="dateInputValue" @change="onDatePick" @blur="showDatePicker = false" ref="datePickerRef" />
+        <span    v-else        class="today-badge">Today</span>
       </div>
 
       <div class="date-nav__actions">
-        <!-- Reminder schedule info -->
-        <div class="reminder-info" v-if="Object.keys(bookings).length > 0">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" style="color:#25D366">
-            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-          </svg>
-          <span>{{ scheduledReminders }} reminder{{ scheduledReminders !== 1 ? 's' : '' }} scheduled</span>
+        <div v-if="Object.keys(bookings).length > 0" class="reminder-info">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          <span>{{ scheduledRemindersCount }} reminder{{ scheduledRemindersCount !== 1 ? 's' : '' }} scheduled</span>
         </div>
-
-        <button class="action-btn action-btn--whatsapp" @click="sendSummary">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
-            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-          </svg>
-          Share day summary
+        <button class="action-btn action-btn--wa" @click="sendSummary">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          Share day
         </button>
       </div>
     </div>
 
-    <!-- Summary pills -->
+    <!-- ── Summary pills ── -->
     <div class="summary-row">
       <div class="summary-pill">
         <span class="pill-num">{{ Object.keys(bookings).length }}</span>
@@ -51,56 +73,59 @@
         <span class="pill-label">Beauty</span>
       </div>
       <div class="summary-pill summary-pill--free">
-        <span class="pill-num">{{ totalSlots - Object.keys(bookings).length }}</span>
+        <span class="pill-num">{{ freeSlots }}</span>
         <span class="pill-label">Free slots</span>
       </div>
     </div>
 
-    <!-- Calendar grid -->
-    <div class="cal-container">
-      <!-- Column headers -->
-      <div class="cal-grid cal-grid--header">
-        <div class="cal-time-cell"></div>
-        <div v-for="chair in CHAIRS" :key="chair.id" class="cal-head" :class="`cal-head--${chair.type}`">
-          <div class="head-label">{{ chair.label }}</div>
+    <!-- ── Calendar grid ── -->
+    <div class="cal-wrap">
+      <!-- Header row -->
+      <div class="cal-grid cal-head-row">
+        <div class="time-col-head"></div>
+        <div v-for="chair in CHAIRS" :key="chair.id" class="cal-col-head" :class="`cal-col-head--${chair.type}`">
+          <div class="head-name">{{ chair.label }}</div>
           <div class="head-type">{{ chair.type === 'hair' ? '✂ Hair' : '💄 Beauty' }}</div>
         </div>
       </div>
 
-      <!-- Time rows -->
-      <div class="cal-body">
+      <!-- Scrollable body -->
+      <div class="cal-body" ref="calBodyRef">
         <div
           v-for="time in TIME_SLOTS"
           :key="time"
-          class="cal-grid cal-grid--row"
-          :class="{ 'cal-grid--current': isCurrentHour(time) }"
+          class="cal-grid cal-row"
+          :class="{ 'cal-row--now': isCurrentSlot(time) }"
         >
-          <div class="cal-time-cell">
-            <span class="time-label">{{ time }}</span>
+          <div class="time-col">
+            <span class="time-lbl">{{ time }}</span>
           </div>
+
           <div
             v-for="chair in CHAIRS"
             :key="chair.id"
-            class="cal-slot"
-            :class="slotClass(time, chair)"
-            @click="onSlotClick(time, chair)"
+            class="cal-cell"
+            :class="cellClass(time, chair)"
+            @click="onCellClick(time, chair)"
           >
             <template v-if="getBooking(time, chair.id)">
-              <div class="slot-booking">
-                <div class="slot-name">{{ getBooking(time, chair.id).name }}</div>
-                <div class="slot-services">{{ getBooking(time, chair.id).services }}</div>
-                <div class="slot-actions">
-                  <button class="slot-remind-btn" @click.stop="quickRemind(time, chair)" title="Send WhatsApp reminder">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                    </svg>
-                  </button>
-                </div>
+              <div class="cell-booking">
+                <div class="cell-name">{{ getBooking(time, chair.id).name }}</div>
+                <div class="cell-svc">{{ getBooking(time, chair.id).services }}</div>
+                <!-- WhatsApp button visible on hover -->
+                <button
+                  class="cell-wa-btn"
+                  @click.stop="quickRemind(time, chair)"
+                  title="WhatsApp reminder"
+                >
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                  Remind
+                </button>
               </div>
             </template>
             <template v-else>
-              <div class="slot-empty">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              <div class="cell-empty">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
               </div>
             </template>
           </div>
@@ -108,7 +133,7 @@
       </div>
     </div>
 
-    <!-- Booking / View modal -->
+    <!-- ── Booking / View modal ── -->
     <BookingModal
       :show="modal.show"
       :mode="modal.mode"
@@ -123,6 +148,7 @@
       @submit="onSubmit"
       @delete="onDelete"
     />
+
   </div>
 </template>
 
@@ -132,15 +158,16 @@ import BookingModal from '@/components/BookingModal.vue'
 import { useBookings, CHAIRS, TIME_SLOTS } from '@/composables/useBookings'
 import { useWhatsApp } from '@/composables/useWhatsApp'
 
-const { getBookingsForDate, addBooking, deleteBooking, isSaving, dateKey } = useBookings()
+const { getBookingsForDate, addBooking, deleteBooking, isLoading, isSaving, apiError } = useBookings()
 const { sendReminder, scheduleAllReminders, sendDailySummary, requestNotificationPermission } = useWhatsApp()
 
-// ── state ────────────────────────────────────────────────────────────────────
-const currentDate = ref(new Date())
-const showDatePicker = ref(false)
+// ── state ─────────────────────────────────────────────────────────────────────
+const currentDate  = ref(new Date())
+const bookings     = ref({})
 const datePickerRef = ref(null)
-const bookings = ref({})
-const scheduledReminders = ref(0)
+const calBodyRef   = ref(null)
+const scheduledRemindersCount = ref(0)
+const loadingMsg   = ref('Loading appointments…')
 
 const modal = ref({
   show: false, mode: 'book',
@@ -148,10 +175,10 @@ const modal = ref({
   booking: null, slotKey: ''
 })
 
-// ── computed ─────────────────────────────────────────────────────────────────
-const totalSlots = computed(() => TIME_SLOTS.length * CHAIRS.length)
+// ── computed ──────────────────────────────────────────────────────────────────
 const hairCount  = computed(() => Object.keys(bookings.value).filter(k => k.includes('_hair')).length)
 const beautyCount = computed(() => Object.keys(bookings.value).filter(k => k.includes('_beauty')).length)
+const freeSlots  = computed(() => TIME_SLOTS.length * CHAIRS.length - Object.keys(bookings.value).length)
 
 const formattedDate = computed(() =>
   currentDate.value.toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })
@@ -169,31 +196,44 @@ const dateInputValue = computed(() => {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`
 })
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── helpers ───────────────────────────────────────────────────────────────────
 async function loadBookings() {
+  loadingMsg.value = 'Loading appointments…'
   bookings.value = await getBookingsForDate(currentDate.value)
+  rescheduleReminders()
+  scrollToCurrentTime()
 }
 
 function getBooking(time, chairId) {
   return bookings.value[`${time}_${chairId}`] || null
 }
 
-function slotClass(time, chair) {
+function cellClass(time, chair) {
   const b = getBooking(time, chair.id)
-  if (b) return `cal-slot--booked cal-slot--${chair.type}`
-  return 'cal-slot--empty'
+  if (b) return `cal-cell--booked cal-cell--${chair.type}`
+  return 'cal-cell--empty'
 }
 
-function isCurrentHour(time) {
+function isCurrentSlot(time) {
   if (!isToday.value) return false
   const now = new Date()
   const [h, m] = time.split(':').map(Number)
   const hour = h < 10 ? h + 12 : h
-  const nowH = now.getHours(), nowM = now.getMinutes()
-  return nowH === hour && nowM < 30 && m === 0 || nowH === hour && nowM >= 30 && m === 30
+  return now.getHours() === hour && (
+    (now.getMinutes() < 30 && m === 0) ||
+    (now.getMinutes() >= 30 && m === 30)
+  )
 }
 
-// ── navigation ────────────────────────────────────────────────────────────────
+function scrollToCurrentTime() {
+  if (!isToday.value || !calBodyRef.value) return
+  nextTick(() => {
+    const rows = calBodyRef.value.querySelectorAll('.cal-row--now')
+    if (rows.length > 0) rows[0].scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
+}
+
+// ── date navigation ───────────────────────────────────────────────────────────
 function changeDate(delta) {
   const d = new Date(currentDate.value)
   d.setDate(d.getDate() + delta)
@@ -202,58 +242,53 @@ function changeDate(delta) {
 function goToday() {
   currentDate.value = new Date()
 }
+function openDatePicker() {
+  datePickerRef.value?.showPicker?.()
+  datePickerRef.value?.click()
+}
 function onDatePick(e) {
   const [y, m, d] = e.target.value.split('-').map(Number)
-  currentDate.value = new Date(y, m-1, d)
-  showDatePicker.value = false
+  currentDate.value = new Date(y, m - 1, d)
 }
 
-watch(currentDate, async () => {
-  await loadBookings()
-  rescheduleReminders()
-})
-
-watch(showDatePicker, async (val) => {
-  if (val) { await nextTick(); datePickerRef.value?.showPicker?.() }
-})
+watch(currentDate, loadBookings)
 
 // ── modal ─────────────────────────────────────────────────────────────────────
-function onSlotClick(time, chair) {
+function onCellClick(time, chair) {
   const booking = getBooking(time, chair.id)
   modal.value = {
     show: true,
     mode: booking ? 'view' : 'book',
-    time,
-    chairId: chair.id,
-    chairLabel: chair.label,
-    chairType: chair.type,
+    time, chairId: chair.id, chairLabel: chair.label, chairType: chair.type,
     booking,
     slotKey: `${time}_${chair.id}`
   }
 }
-
-function closeModal() {
-  modal.value.show = false
-}
+function closeModal() { modal.value.show = false }
 
 async function onSubmit(formData) {
+  loadingMsg.value = 'Saving booking…'
   const slotKey = `${modal.value.time}_${modal.value.chairId}`
   const ok = await addBooking(currentDate.value, slotKey, formData)
   if (ok) {
-    loadBookings()
     closeModal()
-    rescheduleReminders()
+    await loadBookings()
+    // If reminder was requested and this is today, schedule it
+    if (formData.scheduleReminder && isToday.value) {
+      rescheduleReminders()
+    }
   }
 }
 
 async function onDelete() {
+  loadingMsg.value = 'Deleting booking…'
   await deleteBooking(currentDate.value, modal.value.slotKey)
-  loadBookings()
   closeModal()
-  rescheduleReminders()
+  await loadBookings()
 }
 
 // ── WhatsApp ──────────────────────────────────────────────────────────────────
+// quickRemind: opens wa.me/+91MOBILE?text=reminder directly
 function quickRemind(time, chair) {
   const booking = getBooking(time, chair.id)
   if (booking) sendReminder(booking, time, chair.label)
@@ -268,8 +303,8 @@ function sendSummary() {
 }
 
 function rescheduleReminders() {
-  const count = Object.values(bookings.value).filter(b => b.scheduleReminder && b.mobile).length
-  scheduledReminders.value = count
+  const withReminder = Object.values(bookings.value).filter(b => b.scheduleReminder === '1' && b.mobile)
+  scheduledRemindersCount.value = withReminder.length
   if (isToday.value) {
     scheduleAllReminders(bookings.value, CHAIRS, currentDate.value)
   }
@@ -279,14 +314,57 @@ function rescheduleReminders() {
 onMounted(async () => {
   await requestNotificationPermission()
   await loadBookings()
-  rescheduleReminders()
 })
 </script>
 
 <style scoped>
 .appointments { display: flex; flex-direction: column; gap: 16px; }
 
-/* date nav */
+/* ── Loading overlay ── */
+.page-loader {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(250,248,245,0.75);
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(3px);
+}
+.loader-box {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  padding: 28px 36px;
+  box-shadow: var(--shadow-md);
+}
+.loader-spinner {
+  width: 28px; height: 28px;
+  border: 2.5px solid var(--color-border);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+.loader-text { font-size: 13px; color: var(--color-text-muted); }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Fade transition ── */
+.fade-enter-active, .fade-leave-active { transition: opacity .2s; }
+.fade-enter-from, .fade-leave-to { opacity: 0; }
+
+/* ── Error bar ── */
+.error-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 16px;
+  background: var(--color-danger-light);
+  color: var(--color-danger);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+}
+.error-retry {
+  margin-left: auto; padding: 3px 12px;
+  border: 1px solid var(--color-danger); border-radius: var(--radius-sm);
+  background: none; color: var(--color-danger); font-size: 12px; cursor: pointer;
+}
+
+/* ── Date nav ── */
 .date-nav {
   display: flex; align-items: center; justify-content: space-between;
   background: var(--color-surface);
@@ -296,7 +374,7 @@ onMounted(async () => {
   box-shadow: var(--shadow-sm);
   flex-wrap: wrap; gap: 12px;
 }
-.date-nav__controls { display: flex; align-items: center; gap: 10px; position: relative; }
+.date-nav__controls { display: flex; align-items: center; gap: 10px; }
 .date-nav-btn {
   width: 36px; height: 36px;
   border: 1px solid var(--color-border); border-radius: var(--radius-md);
@@ -306,12 +384,16 @@ onMounted(async () => {
 }
 .date-nav-btn:hover { background: var(--color-surface-2); }
 .date-display {
-  text-align: center; cursor: pointer; padding: 4px 10px; border-radius: var(--radius-md);
-  transition: background var(--transition);
+  text-align: center; cursor: pointer; padding: 4px 12px;
+  border-radius: var(--radius-md); transition: background var(--transition);
 }
 .date-display:hover { background: var(--color-surface-2); }
 .date-main { font-family: var(--font-display); font-size: 16px; font-weight: 500; }
-.date-day { font-size: 11px; color: var(--color-text-muted); }
+.date-day  { font-size: 11px; color: var(--color-text-muted); }
+/* Hidden date input — triggered via .showPicker() */
+.date-input-hidden {
+  position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none;
+}
 .today-pill {
   padding: 5px 14px; border-radius: 99px;
   border: 1px solid var(--color-accent); background: none;
@@ -324,26 +406,20 @@ onMounted(async () => {
   background: var(--color-accent-light); color: var(--color-accent);
   font-size: 12px; font-weight: 500;
 }
-.date-input {
-  position: absolute; top: 44px; left: 50%; transform: translateX(-50%);
-  opacity: 0; width: 1px; height: 1px; pointer-events: none;
-}
-
 .date-nav__actions { display: flex; align-items: center; gap: 12px; }
 .reminder-info { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--color-text-muted); }
-
 .action-btn {
   display: flex; align-items: center; gap: 7px;
-  padding: 8px 16px; border: 1px solid var(--color-border);
-  border-radius: var(--radius-md); font-size: 12px; background: none;
-  color: var(--color-text); cursor: pointer;
+  padding: 8px 14px; border: 1px solid var(--color-border);
+  border-radius: var(--radius-md); font-size: 12px;
+  background: none; color: var(--color-text); cursor: pointer;
   transition: background var(--transition);
 }
-.action-btn--whatsapp { background: #25D366; color: white; border-color: #25D366; }
-.action-btn--whatsapp:hover { background: #1da855; }
+.action-btn--wa { background: #25D366; color: #fff; border-color: #25D366; }
+.action-btn--wa:hover { background: #1da855; }
 
-/* summary row */
-.summary-row { display: flex; gap: 10px; }
+/* ── Summary pills ── */
+.summary-row { display: flex; gap: 10px; flex-wrap: wrap; }
 .summary-pill {
   display: flex; align-items: center; gap: 8px;
   padding: 10px 18px;
@@ -351,82 +427,105 @@ onMounted(async () => {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
+  flex: 1; min-width: 80px;
 }
-.pill-num { font-family: var(--font-display); font-size: 20px; font-weight: 500; }
+.pill-num   { font-family: var(--font-display); font-size: 20px; font-weight: 500; }
 .pill-label { font-size: 12px; color: var(--color-text-muted); }
 .summary-pill--hair .pill-num   { color: var(--color-hair); }
 .summary-pill--beauty .pill-num { color: var(--color-beauty); }
 .summary-pill--free .pill-num   { color: var(--color-success); }
 
-/* calendar */
-.cal-container {
+/* ── Calendar ── */
+.cal-wrap {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
   border-radius: var(--radius-lg);
   overflow: hidden;
   box-shadow: var(--shadow-sm);
+  width: 100%;
 }
 .cal-grid {
   display: grid;
-  grid-template-columns: 60px repeat(4, 1fr);
-  gap: 0;
+  grid-template-columns: 58px repeat(4, 1fr);
+  width: 100%;
 }
-.cal-grid--header {
+.cal-head-row {
   border-bottom: 2px solid var(--color-border);
   position: sticky; top: 0; z-index: 10; background: var(--color-surface);
 }
-.cal-time-cell {
-  display: flex; align-items: center; justify-content: flex-end;
-  padding: 0 12px 0 0; min-height: 56px;
-}
-.time-label { font-size: 11px; color: var(--color-text-muted); white-space: nowrap; }
-
-.cal-head {
-  padding: 12px 8px; text-align: center;
+.time-col-head { padding: 12px; }
+.cal-col-head {
+  padding: 10px 8px; text-align: center;
   border-left: 1px solid var(--color-border);
 }
-.cal-head--hair   { background: #EDF4FB; }
-.cal-head--beauty { background: #FDF0F4; }
-.head-label { font-size: 12px; font-weight: 500; color: var(--color-text); }
-.head-type  { font-size: 10px; color: var(--color-text-muted); margin-top: 2px; }
+.cal-col-head--hair   { background: #EDF4FB; }
+.cal-col-head--beauty { background: #FDF0F4; }
+.head-name { font-size: 12px; font-weight: 500; }
+.head-type { font-size: 10px; color: var(--color-text-muted); margin-top: 2px; }
 
-.cal-body { max-height: calc(100vh - 380px); overflow-y: auto; }
+.cal-body {
+  overflow-y: auto;
+  max-height: calc(100vh - 360px);
+}
+.cal-row { border-bottom: 1px solid var(--color-border); }
+.cal-row:last-child { border-bottom: none; }
+.cal-row--now { background: #FFFBF5; }
+.cal-row--now .time-lbl { color: var(--color-accent); font-weight: 600; }
 
-.cal-grid--row { border-bottom: 1px solid var(--color-border); }
-.cal-grid--row:last-child { border-bottom: none; }
-.cal-grid--current { background: #FFFBF5; }
-.cal-grid--current .time-label { color: var(--color-accent); font-weight: 500; }
+.time-col {
+  display: flex; align-items: center; justify-content: flex-end;
+  padding: 0 10px 0 0; min-height: 58px;
+}
+.time-lbl { font-size: 11px; color: var(--color-text-muted); white-space: nowrap; }
 
-.cal-slot {
-  min-height: 56px; border-left: 1px solid var(--color-border);
+.cal-cell {
+  min-height: 58px; border-left: 1px solid var(--color-border);
   padding: 4px; cursor: pointer; position: relative;
   transition: background var(--transition);
 }
-.cal-slot--empty:hover { background: var(--color-surface-2); }
-.cal-slot--booked { cursor: default; }
-.cal-slot--booked.cal-slot--hair   { background: var(--color-hair-light); }
-.cal-slot--booked.cal-slot--beauty { background: var(--color-beauty-light); }
-.cal-slot--booked.cal-slot--hair:hover   { background: #C5DCF2; }
-.cal-slot--booked.cal-slot--beauty:hover { background: #F4D5E0; }
+.cal-cell--empty:hover { background: var(--color-surface-2); }
+.cal-cell--booked      { cursor: pointer; }
+.cal-cell--booked.cal-cell--hair   { background: var(--color-hair-light);   }
+.cal-cell--booked.cal-cell--beauty { background: var(--color-beauty-light); }
+.cal-cell--booked.cal-cell--hair:hover   { background: #BDD8F0; }
+.cal-cell--booked.cal-cell--beauty:hover { background: #F0C8D6; }
 
-.slot-empty {
-  width: 100%; height: 100%; min-height: 48px;
+.cell-empty {
+  width: 100%; height: 100%; min-height: 50px;
   display: flex; align-items: center; justify-content: center;
-  color: var(--color-border-strong);
-  opacity: 0;
+  color: var(--color-border-strong); opacity: 0;
   transition: opacity var(--transition);
 }
-.cal-slot--empty:hover .slot-empty { opacity: 1; }
+.cal-cell--empty:hover .cell-empty { opacity: 1; }
 
-.slot-booking { padding: 4px 6px; }
-.slot-name { font-size: 12px; font-weight: 500; color: var(--color-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.slot-services { font-size: 10px; color: var(--color-text-muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.slot-actions { display: flex; gap: 4px; margin-top: 4px; }
-.slot-remind-btn {
-  padding: 2px 6px; border: none; border-radius: 3px;
-  background: #25D366; color: white; cursor: pointer;
+.cell-booking { padding: 5px 6px; }
+.cell-name    { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cell-svc     { font-size: 10px; color: var(--color-text-muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* WhatsApp button on booked cell — visible on hover */
+.cell-wa-btn {
   display: flex; align-items: center; gap: 3px;
-  font-size: 10px; opacity: 0; transition: opacity var(--transition);
+  margin-top: 5px; padding: 2px 7px;
+  border: none; border-radius: 3px;
+  background: #25D366; color: #fff;
+  font-size: 10px; cursor: pointer;
+  opacity: 0; transition: opacity var(--transition);
 }
-.cal-slot--booked:hover .slot-remind-btn { opacity: 1; }
+.cal-cell--booked:hover .cell-wa-btn { opacity: 1; }
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .cal-grid { grid-template-columns: 44px repeat(4, 1fr); }
+  .head-name { font-size: 10px; }
+  .date-nav { flex-direction: column; align-items: flex-start; }
+}
+@media (max-width: 640px) {
+  .cal-grid { grid-template-columns: 38px repeat(4, 1fr); }
+  .cell-name { font-size: 10px; }
+  .cell-svc  { display: none; }
+  .head-type { display: none; }
+  .cal-body  { max-height: calc(100vh - 420px); }
+  .summary-row { gap: 6px; }
+  .summary-pill { padding: 8px 10px; }
+}
 </style>

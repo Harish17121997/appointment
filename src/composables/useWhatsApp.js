@@ -1,96 +1,82 @@
-// ─── useWhatsApp.js ───────────────────────────────────────────────────────────
-// Handles WhatsApp reminder messages and daily summaries
-
 import { ref, onUnmounted } from 'vue'
 
 export function useWhatsApp() {
-  const reminderTimers = ref([]) // store active timer IDs
+  const reminderTimers = ref([])
 
-  // ── Format phone number for wa.me ─────────────────────────────────────────
+  // ── Format phone: always +91XXXXXXXXXX ─────────────────────────────────────
   function formatPhone(mobile) {
-    // Remove all non-digits
-    let digits = mobile.replace(/\D/g, '')
-    // Add India country code if not present
+    let digits = String(mobile).replace(/\D/g, '')
     if (digits.length === 10) digits = '91' + digits
     return digits
   }
 
-  // ── Build reminder message ─────────────────────────────────────────────────
-  function buildReminderMessage(booking, time, chairLabel) {
-    const msg =
-      `Hello *${booking.name}* 👋\n\n` +
-      `This is a reminder from *Scintillate Unisex Salon* ✂️\n\n` +
-      `Your appointment is in *15 minutes*!\n\n` +
-      `📅 Time: *${time}*\n` +
-      `💇 Service: *${booking.services}*\n` +
-      `🪑 ${chairLabel}\n\n` +
-      `We look forward to seeing you! If you need to reschedule, please call us.\n\n` +
-      `📍 Scintillate Unisex Salon`
-    return msg
-  }
-
-  // ── Send WhatsApp message (opens wa.me link) ───────────────────────────────
+  // ── Core: open WhatsApp with a pre-filled message ──────────────────────────
   function openWhatsApp(mobile, message) {
     const phone = formatPhone(mobile)
-    const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
+    const url   = `https://wa.me/${phone}?text=${encodeURIComponent(message.trim())}`
     window.open(url, '_blank')
   }
 
-  // ── Manually send reminder for a booking ──────────────────────────────────
+  // ── Build the 15-min reminder message ─────────────────────────────────────
+  function buildReminderMessage(booking, time, chairLabel) {
+    return (
+      `Hello *${booking.name}*\n\n` +
+      `This is a reminder from *Scintillate Unisex Salon*\n\n` +
+      `Your appointment is in *15 minutes*!\n\n` +
+      `Time: *${time}*\n` +
+      `Service: *${booking.services}*\n` +
+      `${chairLabel}\n\n` +
+      `We look forward to seeing you!\n` +
+      `If you need to reschedule, please call us.\n\n` +
+      ` *Scintillate Unisex Salon*`
+    )
+  }
+
+  // ── Immediately send a WhatsApp reminder (opens wa.me with number) ─────────
+  // This is called when you click the WhatsApp/Remind button on a booking
   function sendReminder(booking, time, chairLabel) {
     const msg = buildReminderMessage(booking, time, chairLabel)
     openWhatsApp(booking.mobile, msg)
   }
 
-  // ── Schedule auto-reminder (runs 15 min before appointment) ───────────────
+  // ── Schedule auto-reminder: fires a browser alert + opens WA 15 min before ─
   function scheduleReminder(booking, time, chairLabel, date) {
-    const [hourStr, minStr] = time.includes(':') ? time.split(':') : [time, '00']
-    let hour = parseInt(hourStr)
-    const min = parseInt(minStr)
+    const parts = time.split(':')
+    let hour    = parseInt(parts[0])
+    const min   = parseInt(parts[1] || '0')
 
-    // Convert 12h display (1:00 = 13:00 if pm) — slots after 12:00 are PM
-    const slotIndex = parseInt(hourStr)
-    if (slotIndex < 10) hour = slotIndex + 12 // 1:00 → 13:00, etc.
+    // Our slots: 10:00–12:30 are AM (10–12), 1:00 onwards are PM (13+)
+    if (hour < 10) hour = hour + 12
 
-    const appointmentTime = new Date(date)
-    appointmentTime.setHours(hour, min, 0, 0)
+    const apptTime = new Date(date)
+    apptTime.setHours(hour, min, 0, 0)
 
-    const reminderTime = new Date(appointmentTime.getTime() - 15 * 60 * 1000)
-    const now = new Date()
-    const delay = reminderTime.getTime() - now.getTime()
-
-    if (delay <= 0) return null // already passed
+    const delay = apptTime.getTime() - 15 * 60 * 1000 - Date.now()
+    if (delay <= 0) return null   // already past
 
     const timerId = setTimeout(() => {
-      // Show browser notification first
-      if (Notification.permission === 'granted') {
-        new Notification(`Reminder: ${booking.name}`, {
-          body: `Appointment in 15 min — ${booking.services}`,
-          icon: '/favicon.svg'
+      // Browser notification
+      if (Notification?.permission === 'granted') {
+        new Notification(`⏰ Reminder: ${booking.name}`, {
+          body: `Appointment in 15 min — ${time} — ${booking.services}`
         })
       }
-      // Also prompt to send WhatsApp
-      const shouldSend = window.confirm(
-        `⏰ 15-minute reminder!\n\n${booking.name} has an appointment at ${time}.\n\nSend WhatsApp reminder now?`
-      )
-      if (shouldSend) sendReminder(booking, time, chairLabel)
+      // Open WhatsApp directly — no confirm dialog, just open
+      sendReminder(booking, time, chairLabel)
     }, delay)
 
     reminderTimers.value.push(timerId)
     return timerId
   }
 
-  // ── Schedule reminders for all today's bookings ────────────────────────────
+  // ── Schedule reminders for all bookings on a day ───────────────────────────
   function scheduleAllReminders(bookings, chairs, date) {
-    // clear old timers first
     clearAllTimers()
-
     Object.entries(bookings).forEach(([slotKey, booking]) => {
+      if (!booking.mobile) return
       const [time, chairId] = slotKey.split(/_(.+)/)
       const chair = chairs.find(c => c.id === chairId)
-      if (chair && booking.mobile) {
-        scheduleReminder(booking, time, chair.label, date)
-      }
+      if (chair) scheduleReminder(booking, time, chair.label, date)
     })
   }
 
@@ -99,59 +85,62 @@ export function useWhatsApp() {
     reminderTimers.value = []
   }
 
-  // ── Request notification permission ───────────────────────────────────────
   async function requestNotificationPermission() {
     if ('Notification' in window && Notification.permission === 'default') {
       await Notification.requestPermission()
     }
   }
 
-  // ── Build daily summary for WhatsApp ──────────────────────────────────────
+  // ── Build full day summary message ─────────────────────────────────────────
   function buildDailySummary(bookings, date, chairs) {
     const dateStr = new Date(date).toLocaleDateString('en-IN', {
-      day: '2-digit', month: 'long', year: 'numeric', weekday: 'long'
+      weekday: 'long', day: '2-digit', month: 'long', year: 'numeric'
     })
 
-    const hairBookings = Object.entries(bookings).filter(([k]) => k.includes('hair'))
-    const beautyBookings = Object.entries(bookings).filter(([k]) => k.includes('beauty'))
+    const hairEntries   = Object.entries(bookings).filter(([k]) => k.includes('hair'))
+    const beautyEntries = Object.entries(bookings).filter(([k]) => k.includes('beauty'))
 
     let msg = `✂️ *Scintillate Unisex Salon*\n📅 ${dateStr}\n\n`
 
-    if (hairBookings.length > 0) {
-      msg += `💈 *HAIR APPOINTMENTS (${hairBookings.length})*\n`
-      msg += `${'─'.repeat(28)}\n`
-      hairBookings.forEach(([slotKey, b]) => {
+    if (hairEntries.length > 0) {
+      msg += `💈 *HAIR APPOINTMENTS (${hairEntries.length})*\n`
+      msg += `${'─'.repeat(30)}\n`
+      hairEntries.forEach(([slotKey, b]) => {
         const [time, chairId] = slotKey.split(/_(.+)/)
         const chair = chairs.find(c => c.id === chairId)
-        msg += `🕐 ${time}  |  ${chair?.label || chairId}\n👤 ${b.name}  📞 ${b.mobile}\n💇 ${b.services}\n\n`
+        msg += `🕐 ${time}  |  ${chair?.label || chairId}\n`
+        msg += `👤 ${b.name}   📞 ${b.mobile}\n`
+        msg += `💇 ${b.services}\n\n`
       })
     }
 
-    if (beautyBookings.length > 0) {
-      msg += `💄 *BEAUTY APPOINTMENTS (${beautyBookings.length})*\n`
-      msg += `${'─'.repeat(28)}\n`
-      beautyBookings.forEach(([slotKey, b]) => {
+    if (beautyEntries.length > 0) {
+      msg += `💄 *BEAUTY APPOINTMENTS (${beautyEntries.length})*\n`
+      msg += `${'─'.repeat(30)}\n`
+      beautyEntries.forEach(([slotKey, b]) => {
         const [time, chairId] = slotKey.split(/_(.+)/)
         const chair = chairs.find(c => c.id === chairId)
-        msg += `🕐 ${time}  |  ${chair?.label || chairId}\n👤 ${b.name}  📞 ${b.mobile}\n💅 ${b.services}\n\n`
+        msg += `🕐 ${time}  |  ${chair?.label || chairId}\n`
+        msg += `👤 ${b.name}   📞 ${b.mobile}\n`
+        msg += `💅 ${b.services}\n\n`
       })
     }
 
     const total = Object.keys(bookings).length
-    msg += `${'─'.repeat(28)}\n`
+    msg += `${'─'.repeat(30)}\n`
     msg += `📊 *Total: ${total} appointment${total !== 1 ? 's' : ''}*\n`
-    msg += `Hair: ${hairBookings.length}  |  Beauty: ${beautyBookings.length}`
+    msg += `💈 Hair: ${hairEntries.length}   💄 Beauty: ${beautyEntries.length}`
 
     return msg
   }
 
+  // ── Send daily summary (no specific number — broadcast) ───────────────────
   function sendDailySummary(bookings, date, chairs) {
     const msg = buildDailySummary(bookings, date, chairs)
-    const url = `https://wa.me/?text=${encodeURIComponent(msg)}`
-    window.open(url, '_blank')
+    // Opens WhatsApp without a pre-set number so you can choose who to send to
+    window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank')
   }
 
-  // cleanup on unmount
   onUnmounted(clearAllTimers)
 
   return {
