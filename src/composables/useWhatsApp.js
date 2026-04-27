@@ -13,7 +13,10 @@ export function useWhatsApp() {
   // ── Core: open WhatsApp with a pre-filled message ──────────────────────────
   function openWhatsApp(mobile, message) {
     const phone = formatPhone(mobile)
-    const url   = `https://wa.me/${phone}?text=${encodeURIComponent(message.trim())}`
+    const cleanMsg = message
+      .normalize('NFC')                 // fix unicode
+      .replace(/[^\x00-\x7F\u00A0-\uFFFF]/g, '') // remove broken chars
+    const url = `https://wa.me/${phone}?text=${encodeURIComponent(cleanMsg)}`
     window.open(url, '_blank')
   }
 
@@ -100,36 +103,36 @@ export function useWhatsApp() {
     const hairEntries   = Object.entries(bookings).filter(([k]) => k.includes('hair'))
     const beautyEntries = Object.entries(bookings).filter(([k]) => k.includes('beauty'))
 
-    let msg = `✂️ *Scintillate Unisex Salon*\n📅 ${dateStr}\n\n`
+    let msg = `*Scintillate Unisex Salon*\n ${dateStr}\n\n`
 
     if (hairEntries.length > 0) {
-      msg += `💈 *HAIR APPOINTMENTS (${hairEntries.length})*\n`
+      msg += `*HAIR APPOINTMENTS (${hairEntries.length})*\n`
       msg += `${'─'.repeat(30)}\n`
       hairEntries.forEach(([slotKey, b]) => {
         const [time, chairId] = slotKey.split(/_(.+)/)
         const chair = chairs.find(c => c.id === chairId)
-        msg += `🕐 ${time}  |  ${chair?.label || chairId}\n`
-        msg += `👤 ${b.name}   📞 ${b.mobile}\n`
-        msg += `💇 ${b.services}\n\n`
+        msg += `${time}  |  ${chair?.label || chairId}\n`
+        msg += `${b.name}   ${b.mobile}\n`
+        msg += `${b.services}\n\n`
       })
     }
 
     if (beautyEntries.length > 0) {
-      msg += `💄 *BEAUTY APPOINTMENTS (${beautyEntries.length})*\n`
+      msg += ` *BEAUTY APPOINTMENTS (${beautyEntries.length})*\n`
       msg += `${'─'.repeat(30)}\n`
       beautyEntries.forEach(([slotKey, b]) => {
         const [time, chairId] = slotKey.split(/_(.+)/)
         const chair = chairs.find(c => c.id === chairId)
-        msg += `🕐 ${time}  |  ${chair?.label || chairId}\n`
-        msg += `👤 ${b.name}   📞 ${b.mobile}\n`
-        msg += `💅 ${b.services}\n\n`
+        msg += ` ${time}  |  ${chair?.label || chairId}\n`
+        msg += ` ${b.name}   📞 ${b.mobile}\n`
+        msg += ` ${b.services}\n\n`
       })
     }
 
     const total = Object.keys(bookings).length
     msg += `${'─'.repeat(30)}\n`
-    msg += `📊 *Total: ${total} appointment${total !== 1 ? 's' : ''}*\n`
-    msg += `💈 Hair: ${hairEntries.length}   💄 Beauty: ${beautyEntries.length}`
+    msg += ` *Total: ${total} appointment${total !== 1 ? 's' : ''}*\n`
+    msg += ` Hair: ${hairEntries.length}   💄 Beauty: ${beautyEntries.length}`
 
     return msg
   }
