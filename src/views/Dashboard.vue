@@ -177,7 +177,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { useBookings, CHAIRS } from '@/composables/useBookings'
+import { useBookings, CHAIRS, API_URL } from '@/composables/useBookings'
 import { useWhatsApp } from '@/composables/useWhatsApp'
 
 const { getStats, getBookingsForDate, isLoading, apiError } = useBookings()
@@ -238,13 +238,24 @@ const todayBookings = computed(() => {
 
 // ── Load data ─────────────────────────────────────────────────────────────────
 async function loadData() {
-  const [statsData, todayData] = await Promise.all([
-    getStats(),
-    getBookingsForDate(new Date())
-  ])
-  // stats.value = statsData || stats.value
-  stats.value = { ...stats.value, ...statsData }
-  todayRawBookings.value = todayData || {}
+  isLoading.value = true
+  try {
+    function formatDateKey(date) {
+      const d = new Date(date)
+      return `${d.getDate()}/${d.getMonth() + 1}/${d.getFullYear()}`
+    }
+    const today = formatDateKey(new Date())
+    const res = await fetch(`${API_URL}?action=dashboard&date=${today}`)
+    const json = await res.json()
+    if (json.success) {
+      stats.value = { ...stats.value, ...json.stats }
+      todayRawBookings.value = json.today || {}
+    }
+  } catch (err) {
+    console.error(err)
+  } finally {
+    isLoading.value = false
+  }
 }
 
 // ── WhatsApp ──────────────────────────────────────────────────────────────────
