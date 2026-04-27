@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 
 //  Your deployed Apps Script URL
-export const API_URL = 'https://script.google.com/macros/s/AKfycbxLnJxM86YL2oMOmo5zYQdJRbyTLw1_JyzLM1VCzy3GeuVXjBp68IY6Fh_1Q29dJRas/exec'
+export const API_URL = 'https://script.google.com/macros/s/AKfycbyaytwHPlnkDMwdHVGcLq494Fnic5fl8xEN4zHOKsg7ANd4osaK9fJUfyFHcgybbjxIeQ/exec'
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 export const TIME_SLOTS = [

@@ -22,7 +22,7 @@
           </svg>
         </div>
         <div class="stat-info">
-          <div class="stat-num">{{ stats.todayTotal ?? '—' }}</div>
+          <div class="stat-num">{{ isLoading ? '...' : stats.todayTotal }}</div>
           <div class="stat-label">Today's appointments</div>
         </div>
       </div>
@@ -74,7 +74,7 @@
           <span class="card__sub">Booking activity</span>
         </div>
         <div class="bar-chart">
-          <div v-for="(day, i) in stats.last7" :key="i" class="bar-col">
+          <div v-for="(day, i) in stats.last7 || []":key="i" class="bar-col">
             <div class="bar-val">{{ day.count || '' }}</div>
             <div class="bar-wrap">
               <div
@@ -192,8 +192,15 @@ const stats = ref({
 const todayRawBookings = ref({})
 
 // ── Computed ──────────────────────────────────────────────────────────────────
-const maxCount = computed(() => Math.max(...(stats.value.last7 || []).map(d => d.count), 1))
-const maxSvc   = computed(() => Math.max(...(stats.value.topServices || []).map(s => s.count), 1))
+const maxCount = computed(() => {
+  const values = (stats.value.last7 || []).map(d => d.count)
+  return values.length ? Math.max(...values) : 1
+})
+
+const maxSvc = computed(() => {
+  const values = (stats.value.topServices || []).map(s => s.count)
+  return values.length ? Math.max(...values) : 1
+})
 
 function barHeight(count) {
   return `${Math.max((count / maxCount.value) * 100, count > 0 ? 8 : 3)}%`
@@ -235,7 +242,8 @@ async function loadData() {
     getStats(),
     getBookingsForDate(new Date())
   ])
-  stats.value = statsData || stats.value
+  // stats.value = statsData || stats.value
+  stats.value = { ...stats.value, ...statsData }
   todayRawBookings.value = todayData || {}
 }
 
