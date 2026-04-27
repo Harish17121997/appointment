@@ -14,10 +14,10 @@ export const TIME_SLOTS = [
 ]
 
 export const CHAIRS = [
-  { id: 'hair1',   label: 'Hair — Chair 1',   type: 'hair' },
-  { id: 'hair2',   label: 'Hair — Chair 2',   type: 'hair' },
-  { id: 'beauty1', label: 'Beauty — Chair 1', type: 'beauty' },
-  { id: 'beauty2', label: 'Beauty — Chair 2', type: 'beauty' },
+  { id: 'hair1',   label: 'Lucky',   type: 'hair' },
+  { id: 'hair2',   label: 'Shaad',   type: 'hair' },
+  { id: 'beauty1', label: 'Priyanka', type: 'beauty' },
+  { id: 'beauty2', label: 'Surabhi', type: 'beauty' },
 ]
 
 export const HAIR_SERVICES = [
