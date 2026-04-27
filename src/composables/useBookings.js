@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 
-// ✅ Your deployed Apps Script URL
+//  Your deployed Apps Script URL
 export const API_URL = 'https://script.google.com/macros/s/AKfycbxLnJxM86YL2oMOmo5zYQdJRbyTLw1_JyzLM1VCzy3GeuVXjBp68IY6Fh_1Q29dJRas/exec'
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
