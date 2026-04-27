@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 
 // ✅ Your deployed Apps Script URL
-export const API_URL = 'https://script.google.com/macros/s/AKfycbznWn8bqGUGVcl2LSKNTaEChHIfbqRVpVsNd_kDu19F80WGZbLfUiDVxGCp-ncj7Bq9yg/exec'
+export const API_URL = 'https://script.google.com/macros/s/AKfycbxLnJxM86YL2oMOmo5zYQdJRbyTLw1_JyzLM1VCzy3GeuVXjBp68IY6Fh_1Q29dJRas/exec'
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 export const TIME_SLOTS = [
@@ -62,15 +62,17 @@ export function useBookings() {
   // ─── FETCH stats for dashboard (last 7 days + today counts) ──────────────
   async function getStats() {
     isLoading.value = true
-    apiError.value  = ''
+    apiError.value = ''
+
     try {
-      const res  = await fetch(`${API_URL}?action=stats`)
-      const json = await res.json()
-      if (json.success && json.stats) {
-        return json.stats
+      const res = await fetch(`${API_URL}?action=stats`)
+      const data = await res.json()
+
+      if (!data.success) {
+        throw new Error(data.error || 'Stats failed')
       }
-      // fallback empty stats shape
-      return emptyStats()
+      return data
+
     } catch (err) {
       console.error('Stats fetch error:', err)
       apiError.value = 'Failed to load stats.'
