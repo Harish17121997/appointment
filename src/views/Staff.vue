@@ -347,80 +347,61 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { useStaff } from '@/composables/useStaff'
 import { useAuth } from '@/composables/useAuth'
 
-const { isOwner, login, setPin, getPin } = useAuth()
+/* ───────── AUTH (FIXED) ───────── */
+const { isOwner, login } = useAuth()
 
-// ── PIN gate ──────────────────────────────────────────────────────────────────
 const pinDigits = ref(['', '', '', ''])
-const pinRefs   = ref([])
-const pinError  = ref(false)
+const pinRefs = []
+const pinError = ref(false)
 
-function onPinInput(i) {
-  const val = pinDigits.value[i]
-  if (val && i < 3) nextTick(() => pinRefs.value[i + 1]?.focus())
-  if (pinDigits.value.every(d => d !== '')) submitPin()
-}
-function onPinBack(i) {
-  if (!pinDigits.value[i] && i > 0) {
-    pinDigits.value[i - 1] = ''
-    nextTick(() => pinRefs.value[i - 1]?.focus())
+function onPinInput(index) {
+  pinError.value = false
+  if (pinDigits.value[index] && index < 3) {
+    pinRefs[index + 1]?.focus()
   }
 }
+
+function onPinBack(index) {
+  if (!pinDigits.value[index] && index > 0) {
+    pinRefs[index - 1]?.focus()
+  }
+}
+
 function submitPin() {
-  const pin = pinDigits.value.join('')
-  if (pin.length < 4) return
-  if (!login(pin)) {
+  const enteredPin = pinDigits.value.join('')
+
+  if (login(enteredPin)) {
+    pinError.value = false
+    pinDigits.value = ['', '', '', '']
+  } else {
     pinError.value = true
     pinDigits.value = ['', '', '', '']
-    nextTick(() => pinRefs.value[0]?.focus())
-    setTimeout(() => pinError.value = false, 2000)
+    pinRefs[0]?.focus()
   }
 }
-onMounted(() => {
-  if (!isOwner.value) nextTick(() => pinRefs.value[0]?.focus())
-})
 
-// ── Tabs ──────────────────────────────────────────────────────────────────────
-const activeTab = ref('staff')
-const tabs = [
-  { id: 'staff',      label: 'Staff List',  icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>' },
-  { id: 'attendance', label: 'Attendance',  icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' },
-  { id: 'payment',    label: 'Salary',      icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>' },
-]
+/* ───────── API ───────── */
+const {
+  staff,
+  attendance,
+  adjustments,
+  paid,
+  fetchStaff,
+  saveStaff: apiSaveStaff,
+  deleteStaff: apiDeleteStaff,
+  saveAttendance: apiSaveAttendance,
+  saveAdjustment: apiSaveAdjustment,
+  markPaid: apiMarkPaid
+} = useStaff()
 
-// ── Staff data ─────────────────────────────────────────────────────────────────
-const STAFF_KEY = 'salon_staff_v1'
-const ATT_KEY   = 'salon_attendance_v1'
-const ADJ_KEY   = 'salon_adjustments_v1'
-const PAID_KEY  = 'salon_paid_v1'
+const staffList = staff
+const paidStatus = paid
 
-const COLORS = ['#8B6F47','#1B4F72','#7B2D42','#1E6B45','#6B4F9C','#B87333','#2C7873','#C0392B']
-
-const staffList   = ref([])
-const attendance  = ref({})   // { staffId_YYYY-MM: { day: 'P'|'A'|'H'|'' } }
-const adjustments = ref({})   // { staffId: { advance, pending, bonus } }
-const paidStatus  = ref({})   // { staffId_YYYY-MM: true }
-
-function loadAll() {
-  try { staffList.value  = JSON.parse(localStorage.getItem(STAFF_KEY)  || '[]') } catch { staffList.value = [] }
-  try { attendance.value = JSON.parse(localStorage.getItem(ATT_KEY)    || '{}') } catch { attendance.value = {} }
-  try { paidStatus.value = JSON.parse(localStorage.getItem(PAID_KEY)   || '{}') } catch { paidStatus.value = {} }
-  try { adjustments.value= JSON.parse(localStorage.getItem(ADJ_KEY)    || '{}') } catch { adjustments.value = {} }
-  // Ensure every staff member has an adjustments entry
-  staffList.value.forEach(s => {
-    if (!adjustments.value[s.id]) adjustments.value[s.id] = { advance: 0, pending: 0, bonus: 0 }
-  })
-}
-function saveStaffList()   { localStorage.setItem(STAFF_KEY, JSON.stringify(staffList.value)) }
-function saveAttendance()  { localStorage.setItem(ATT_KEY,   JSON.stringify(attendance.value)) }
-function saveAdjustments() { localStorage.setItem(ADJ_KEY,   JSON.stringify(adjustments.value)) }
-function savePaid()        { localStorage.setItem(PAID_KEY,  JSON.stringify(paidStatus.value)) }
-
-onMounted(loadAll)
-
-// ── Month navigation ───────────────────────────────────────────────────────────
+/* ───────── MONTH ───────── */
 const viewDate = ref(new Date())
 
 const monthKey = computed(() => {
@@ -428,246 +409,213 @@ const monthKey = computed(() => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 })
 
-const monthLabel = computed(() =>
-  viewDate.value.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
-)
+onMounted(() => fetchStaff(monthKey.value))
+watch(monthKey, (m) => fetchStaff(m))
+
+/* ───────── STAFF MODAL ───────── */
+const staffModal = reactive({
+  show: false,
+  editing: false,
+  editId: null,
+  form: { name: '', role: '', mobile: '', salary: '', joinDate: '' },
+  errors: {}
+})
+
+function validateStaffForm() {
+  const e = {}
+  if (!staffModal.form.name.trim()) e.name = 'Required'
+  if (!/^\d{7,15}$/.test(staffModal.form.mobile)) e.mobile = 'Invalid mobile'
+  if (!staffModal.form.salary) e.salary = 'Required'
+  staffModal.errors = e
+  return Object.keys(e).length === 0
+}
+
+async function saveStaff() {
+  if (!validateStaffForm()) return
+
+  await apiSaveStaff({
+    id: staffModal.editId || Date.now().toString(),
+    ...staffModal.form
+  })
+
+  staffModal.show = false
+  fetchStaff(monthKey.value)
+}
+
+async function deleteStaff(id) {
+  if (!confirm('Delete staff?')) return
+  await apiDeleteStaff(id)
+  fetchStaff(monthKey.value)
+}
+
+/* ───────── ATTENDANCE ───────── */
+function getKey(id) {
+  return `${id}_${monthKey.value}`
+}
+
+async function toggleAtt(id, day) {
+  const key = getKey(id)
+
+  if (!attendance.value[key]) attendance.value[key] = {}
+
+  const cur = attendance.value[key][day] || ''
+  const cycle = ['', 'P', 'A', 'H']
+  const next = cycle[(cycle.indexOf(cur) + 1) % cycle.length]
+
+  attendance.value[key][day] = next
+
+  await apiSaveAttendance(id, monthKey.value, attendance.value[key])
+}
+
+/* ───────── AUTO SAVE PAYMENT ───────── */
+watch(adjustments, (val) => {
+  Object.keys(val).forEach(id => {
+    apiSaveAdjustment(id, monthKey.value, val[id])
+  })
+}, { deep: true })
+
+/* ───────── MARK PAID ───────── */
+async function markPaid(s) {
+  await apiMarkPaid(s.id, monthKey.value)
+  fetchStaff(monthKey.value)
+}
+
+/* ───────── BONUS: AUTO SUBMIT PIN ───────── */
+watch(pinDigits, (val) => {
+  if (val.join('').length === 4) {
+    submitPin()
+  }
+}, { deep: true })
+
+/* ───────── TABS ───────── */
+const activeTab = ref('staff')
+
+const tabs = [
+  { id: 'staff', label: 'Staff', icon: '👤' },
+  { id: 'attendance', label: 'Attendance', icon: '📅' },
+  { id: 'payment', label: 'Salary', icon: '💰' }
+]
+
+/* ───────── MONTH LOGIC ───────── */
+function changeMonth(offset) {
+  const d = new Date(viewDate.value)
+  d.setMonth(d.getMonth() + offset)
+  viewDate.value = d
+}
+
+const monthLabel = computed(() => {
+  return viewDate.value.toLocaleString('default', { month: 'long', year: 'numeric' })
+})
 
 const daysInMonth = computed(() => {
   const d = viewDate.value
   return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
 })
 
-const workingDays = computed(() => {
-  // Count non-Sunday days
-  const d = viewDate.value
-  const total = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
-  let count = 0
-  for (let day = 1; day <= total; day++) {
-    const wd = new Date(d.getFullYear(), d.getMonth(), day).getDay()
-    if (wd !== 0) count++
-  }
-  return count
-})
-
-function changeMonth(delta) {
-  const d = new Date(viewDate.value)
-  d.setMonth(d.getMonth() + delta)
-  viewDate.value = d
-}
-
+/* ───────── DATE HELPERS ───────── */
 function isToday(day) {
-  const now = new Date()
-  const d = viewDate.value
-  return now.getFullYear() === d.getFullYear() &&
-         now.getMonth()    === d.getMonth()    &&
-         now.getDate()     === day
+  const today = new Date()
+  return (
+    today.getDate() === day &&
+    today.getMonth() === viewDate.value.getMonth() &&
+    today.getFullYear() === viewDate.value.getFullYear()
+  )
 }
+
 function isSunday(day) {
-  const d = viewDate.value
-  return new Date(d.getFullYear(), d.getMonth(), day).getDay() === 0
+  const d = new Date(viewDate.value.getFullYear(), viewDate.value.getMonth(), day)
+  return d.getDay() === 0
 }
+
 function weekdayShort(day) {
-  const d = viewDate.value
-  return new Date(d.getFullYear(), d.getMonth(), day)
-    .toLocaleDateString('en-IN', { weekday: 'short' }).slice(0, 2)
+  const d = new Date(viewDate.value.getFullYear(), viewDate.value.getMonth(), day)
+  return d.toLocaleDateString('en-IN', { weekday: 'short' })
 }
 
-// ── Attendance helpers ─────────────────────────────────────────────────────────
-function attKey(staffId, day) {
-  return `${staffId}_${monthKey.value}`
-}
-function getAtt(staffId, day) {
-  const mk = attKey(staffId, day)
-  return attendance.value[mk]?.[day] || ''
-}
-function toggleAtt(staffId, day) {
-  const mk = attKey(staffId, day)
-  if (!attendance.value[mk]) attendance.value[mk] = {}
-  const cur = attendance.value[mk][day] || ''
-  const cycle = ['', 'P', 'A', 'H']
-  const next  = cycle[(cycle.indexOf(cur) + 1) % cycle.length]
-  attendance.value[mk][day] = next
-  saveAttendance()
-}
-function attClass(staffId, day) {
-  const v = getAtt(staffId, day)
-  if (v === 'P') return 'att-p'
-  if (v === 'A') return 'att-a'
-  if (v === 'H') return 'att-h'
-  return ''
-}
-function attSymbol(staffId, day) {
-  return getAtt(staffId, day) || '–'
-}
-function attLabel(staffId, day) {
-  const v = getAtt(staffId, day)
-  return v === 'P' ? 'Present' : v === 'A' ? 'Absent' : v === 'H' ? 'Half-day' : 'Not marked'
+/* ───────── ATTENDANCE UI ───────── */
+function attSymbol(id, day) {
+  const key = getKey(id)
+  return attendance.value[key]?.[day] || '–'
 }
 
-function presentCount(staffId) {
-  const mk = `${staffId}_${monthKey.value}`
-  const d  = attendance.value[mk] || {}
-  return Object.values(d).filter(v => v === 'P').length
-}
-function halfCount(staffId) {
-  const mk = `${staffId}_${monthKey.value}`
-  const d  = attendance.value[mk] || {}
-  return Object.values(d).filter(v => v === 'H').length
-}
-function absentCount(staffId) {
-  const mk = `${staffId}_${monthKey.value}`
-  const d  = attendance.value[mk] || {}
-  return Object.values(d).filter(v => v === 'A').length
+function attClass(id, day) {
+  const v = attSymbol(id, day)
+  return {
+    'att-p': v === 'P',
+    'att-a': v === 'A',
+    'att-h': v === 'H'
+  }
 }
 
-// ── Salary calculation ─────────────────────────────────────────────────────────
+function attLabel(id, day) {
+  return attSymbol(id, day)
+}
+
+/* ───────── COUNTING ───────── */
+function presentCount(id) {
+  const key = getKey(id)
+  const data = attendance.value[key] || {}
+  return Object.values(data).filter(v => v === 'P').length
+}
+
+function absentCount(id) {
+  const key = getKey(id)
+  const data = attendance.value[key] || {}
+  return Object.values(data).filter(v => v === 'A').length
+}
+
+function halfCount(id) {
+  const key = getKey(id)
+  const data = attendance.value[key] || {}
+  return Object.values(data).filter(v => v === 'H').length
+}
+
+/* ───────── SALARY CALCULATION ───────── */
+const workingDays = computed(() => daysInMonth.value)
+
 function perDay(s) {
-  return Math.round(s.salary / workingDays.value)
+  return Number(s.salary || 0) / workingDays.value
 }
+
 function earned(s) {
-  const days = presentCount(s.id) + halfCount(s.id) * 0.5
-  return Math.round(perDay(s) * days)
+  const p = presentCount(s.id)
+  const h = halfCount(s.id)
+  return Math.round(perDay(s) * (p + h * 0.5))
 }
+
 function netPay(s) {
   const adj = adjustments.value[s.id] || {}
-  const advance = Number(adj.advance || 0)
-  const pending = Number(adj.pending || 0)
-  const bonus   = Number(adj.bonus   || 0)
-  return Math.max(0, earned(s) - advance - pending + bonus)
+  return (
+    earned(s) -
+    (adj.advance || 0) +
+    (adj.pending || 0) +
+    (adj.bonus || 0)
+  )
 }
 
-// ── Payslip WhatsApp ──────────────────────────────────────────────────────────
-function sendPayslip(s) {
-  const adj     = adjustments.value[s.id] || {}
-  const advance = Number(adj.advance || 0)
-  const pending = Number(adj.pending || 0)
-  const bonus   = Number(adj.bonus   || 0)
-  const net     = netPay(s)
-
-  // Using Unicode code-point escapes to avoid black squares
-  const rupee   = '\u20B9'  // ₹
-  const star    = '*'
-  const nl      = '\n'
-
-  const lines = [
-    '\u2702\uFE0F ' + star + 'Scintillate Unisex Salon' + star,
-    '\uD83D\uDCCB Salary Slip — ' + monthLabel.value,
-    '\u2500'.repeat(28),
-    '',
-    '\uD83D\uDC64 ' + star + s.name + star + ' (' + s.role + ')',
-    '\uD83D\uDCDE ' + s.mobile,
-    '',
-    '\uD83D\uDCC5 Month: ' + star + monthLabel.value + star,
-    '',
-    'Monthly Salary   : ' + rupee + Number(s.salary).toLocaleString('en-IN'),
-    'Working Days     : ' + workingDays.value,
-    'Present Days     : ' + presentCount(s.id),
-    'Half Days        : ' + halfCount(s.id),
-    'Absent Days      : ' + absentCount(s.id),
-    'Per Day Rate     : ' + rupee + perDay(s).toLocaleString('en-IN'),
-    'Earned Amount    : ' + rupee + earned(s).toLocaleString('en-IN'),
-    '',
-    'Advance Deducted : ' + rupee + advance.toLocaleString('en-IN'),
-    'Pending Deducted : ' + rupee + pending.toLocaleString('en-IN'),
-    'Bonus Added      : ' + rupee + bonus.toLocaleString('en-IN'),
-    '',
-    '\u2500'.repeat(28),
-    star + 'Net Payable      : ' + rupee + net.toLocaleString('en-IN') + star,
-    '\u2500'.repeat(28),
-    '',
-    'Thank you for your hard work! \uD83D\uDE4F',
-  ]
-
-  const msg   = lines.join(nl)
-  const digits = String(s.mobile).replace(/\D/g, '')
-  const phone  = digits.length === 10 ? '91' + digits : digits
-  window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), '_blank')
-}
-
-function markPaid(s) {
-  const key = s.id + '_' + monthKey.value
-  paidStatus.value[key] = true
-  savePaid()
-  // also save the adjustments for this month
-  saveAdjustments()
-}
-
-// ── Staff CRUD ─────────────────────────────────────────────────────────────────
-const staffModal = reactive({
-  show: false, editing: false,
-  editId: null,
-  form: { name: '', role: '', mobile: '', salary: '', joinDate: '' },
-  errors: {},
-})
-
-function openAddStaff() {
-  staffModal.editing = false
-  staffModal.editId  = null
-  staffModal.form    = { name: '', role: '', mobile: '', salary: '', joinDate: '' }
-  staffModal.errors  = {}
-  staffModal.show    = true
-}
-function editStaff(s) {
-  staffModal.editing = true
-  staffModal.editId  = s.id
-  staffModal.form    = { name: s.name, role: s.role, mobile: s.mobile, salary: s.salary, joinDate: s.joinDate || '' }
-  staffModal.errors  = {}
-  staffModal.show    = true
-}
-
-function validateStaffForm() {
-  const e = {}
-  if (!staffModal.form.name.trim()) e.name = 'Name is required'
-  if (!/^\d{7,15}$/.test(staffModal.form.mobile.trim())) e.mobile = 'Valid mobile required'
-  if (!staffModal.form.salary || staffModal.form.salary <= 0) e.salary = 'Enter valid salary'
-  staffModal.errors = e
-  return Object.keys(e).length === 0
-}
-
-function saveStaff() {
-  if (!validateStaffForm()) return
-  if (staffModal.editing) {
-    const idx = staffList.value.findIndex(s => s.id === staffModal.editId)
-    if (idx >= 0) Object.assign(staffList.value[idx], staffModal.form)
-  } else {
-    const color = COLORS[staffList.value.length % COLORS.length]
-    const newStaff = { id: Date.now().toString(), color, ...staffModal.form }
-    staffList.value.push(newStaff)
-    adjustments.value[newStaff.id] = { advance: 0, pending: 0, bonus: 0 }
-  }
-  saveStaffList()
-  saveAdjustments()
-  staffModal.show = false
-}
-
-function deleteStaff(id) {
-  if (!confirm('Delete this staff member? Attendance data will be lost.')) return
-  staffList.value = staffList.value.filter(s => s.id !== id)
-  saveStaffList()
-}
-
+/* ───────── UI HELPERS ───────── */
 function initials(name) {
-  return name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+  return name
+    ?.split(' ')
+    .map(n => n[0])
+    .join('')
+    .toUpperCase()
 }
 
-// ── Change PIN ─────────────────────────────────────────────────────────────────
-const showPinModal = ref(false)
-const pinChange = reactive({ current: '', newPin: '', confirm: '', error: '', success: false })
-
-function changePin() {
-  pinChange.error   = ''
-  pinChange.success = false
-  if (pinChange.current !== getPin())             { pinChange.error = 'Current PIN is incorrect'; return }
-  if (pinChange.newPin.length < 4)                { pinChange.error = 'New PIN must be at least 4 digits'; return }
-  if (pinChange.newPin !== pinChange.confirm)      { pinChange.error = 'PINs do not match'; return }
-  setPin(pinChange.newPin)
-  pinChange.success = true
-  pinChange.current = pinChange.newPin = pinChange.confirm = ''
-  setTimeout(() => { showPinModal.value = false }, 1500)
+/* ───────── STAFF MODAL ───────── */
+function openAddStaff() {
+  staffModal.show = true
+  staffModal.editing = false
+  staffModal.editId = null
+  staffModal.form = { name: '', role: '', mobile: '', salary: '', joinDate: '' }
 }
 
-// Save adjustments whenever they change
-watch(adjustments, saveAdjustments, { deep: true })
+function editStaff(s) {
+  staffModal.show = true
+  staffModal.editing = true
+  staffModal.editId = s.id
+  staffModal.form = { ...s }
+}
 </script>
 
 <style scoped>
