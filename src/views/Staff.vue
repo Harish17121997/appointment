@@ -491,9 +491,9 @@ watch(pinDigits, (val) => {
 const activeTab = ref('staff')
 
 const tabs = [
-  { id: 'staff', label: 'Staff', icon: '👤' },
-  { id: 'attendance', label: 'Attendance', icon: '📅' },
-  { id: 'payment', label: 'Salary', icon: '💰' }
+  { id: 'staff',      label: 'Staff List',  icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>' },
+  { id: 'attendance', label: 'Attendance',  icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' },
+  { id: 'payment',    label: 'Salary',      icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12"/><path d="M6 7h12"/><path d="M6 11h5a4 4 0 1 0 0-8"/><path d="M6 11l8 10"/></svg>' },
 ]
 
 /* ───────── MONTH LOGIC ───────── */
@@ -721,11 +721,13 @@ function editStaff(s) {
   display: flex; align-items: center; justify-content: center;
   color: white; font-size: 16px; font-weight: 600;
   font-family: var(--font-display); flex-shrink: 0;
+  background-color: #B7E4CE;
 }
 .mini-avatar {
   width: 24px; height: 24px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   color: white; font-size: 10px; font-weight: 600; flex-shrink: 0;
+  background: #B7E4CE;
 }
 .staff-info { flex: 1; }
 .staff-name  { font-size: 14px; font-weight: 500; }
