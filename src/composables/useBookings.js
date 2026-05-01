@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 
 //  Your deployed Apps Script URL
-export const API_URL = 'https://script.google.com/macros/s/AKfycbx4KuZrx0T0G9vHW2UyRqqH29cIqtsDYVpJdlW8gjEqrPzTnrDyM9L7__cGCnXAMIS7sw/exec'
+export const API_URL = 'https://script.google.com/macros/s/AKfycbxqjjlFQX3k7VyAxImzOJHDRbxBW_ZaBrQGrc3vJ0oIY3TFn9KPI_F0LSdWbMqZovX0jw/exec'
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 export const TIME_SLOTS = [
@@ -37,8 +37,19 @@ export function useBookings() {
   const isSaving  = ref(false)
   const apiError  = ref('')
 
+  // NEVER use toLocaleDateString() — it returns '01/05/2026' (zero-padded)
+  // on some Android/iOS browsers, which mismatches the API's expected 'D/M/YYYY'.
+  // NEVER use toISOString() — it's UTC-based, shifts dates by 1 day in IST (UTC+5:30).
+  // That's why today + next ~13 days (single-digit days 1-9 and 10-13) were broken.
+  // Fix: build from LOCAL date parts — always returns '1/5/2026' format, every device.
   function dateKey(date) {
-    return new Date(date).toLocaleDateString('en-IN')
+    const d = date instanceof Date ? date : new Date(date)
+
+    const day = String(d.getDate()).padStart(2, '0')
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const year = d.getFullYear()
+
+    return `${day}/${month}/${year}`   // ✅ 02/05/2026
   }
 
   // ─── FETCH bookings for a specific date ──────────────────────────────────

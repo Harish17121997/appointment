@@ -1,7 +1,7 @@
 <template>
   <div class="staff-page">
 
-    <!-- ══ OWNER PIN GATE ══════════════════════════════════════════════════ -->
+    <!-- ══ OWNER PIN GATE ══════════════════════════════════════════════════════ -->
     <transition name="modal">
       <div v-if="!isOwner" class="pin-gate">
         <div class="pin-box">
@@ -15,14 +15,10 @@
           <p class="pin-sub">Enter your PIN to manage staff</p>
           <div class="pin-inputs">
             <input
-              v-for="(_, i) in pinDigits"
-              :key="i"
+              v-for="(_, i) in pinDigits" :key="i"
               :ref="el => pinRefs[i] = el"
-              type="password"
-              inputmode="numeric"
-              maxlength="1"
-              class="pin-digit"
-              :class="{ 'pin-digit--error': pinError }"
+              type="password" inputmode="numeric" maxlength="1"
+              class="pin-digit" :class="{ 'pin-digit--error': pinError }"
               v-model="pinDigits[i]"
               @input="onPinInput(i)"
               @keydown.backspace="onPinBack(i)"
@@ -35,38 +31,53 @@
       </div>
     </transition>
 
-    <!-- ══ STAFF CONTENT (owner only) ══════════════════════════════════════ -->
+    <!-- ══ STAFF CONTENT (owner only) ════════════════════════════════════════ -->
     <template v-if="isOwner">
+
+      <!-- Loading bar -->
+      <div v-if="isLoading" class="loading-bar">
+        <span class="loading-spinner"></span>
+        Loading from Google Sheets…
+      </div>
+      <div v-if="error" class="error-bar">⚠ {{ error }}</div>
 
       <!-- Tab bar -->
       <div class="tabs">
-        <button v-for="tab in tabs" :key="tab.id" class="tab" :class="{ 'tab--active': activeTab === tab.id }" @click="activeTab = tab.id">
-          <span v-html="tab.icon"></span>
-          {{ tab.label }}
+        <button
+          v-for="tab in tabs" :key="tab.id"
+          class="tab" :class="{ 'tab--active': activeTab === tab.id }"
+          @click="activeTab = tab.id">
+          <span v-html="tab.icon"></span>{{ tab.label }}
         </button>
         <div class="tab-spacer"></div>
         <button class="btn-add-staff" @click="openAddStaff">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
           Add Staff
         </button>
-        <button class="btn-pin-change" @click="showPinModal = true" title="Change owner PIN">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <button class="btn-pin-change" @click="showPinModal = true" title="Change PIN">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
         </button>
       </div>
 
-      <!-- ── TAB: Staff List ─────────────────────────────────────────────── -->
+      <!-- ── TAB: Staff List ──────────────────────────────────────────────── -->
       <div v-if="activeTab === 'staff'" class="tab-content">
-        <div v-if="staffList.length === 0" class="empty-state">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <div v-if="!isLoading && staffList.length === 0" class="empty-state">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
           <p>No staff added yet</p>
           <button class="btn-primary" @click="openAddStaff">Add first staff member</button>
         </div>
 
         <div v-else class="staff-grid">
           <div v-for="s in staffList" :key="s.id" class="staff-card">
-            <div class="staff-avatar" :style="{ background: s.color }">
-              {{ initials(s.name) }}
-            </div>
+            <div class="staff-avatar" :style="{ background: avatarColor(s.id) }">{{ initials(s.name) }}</div>
             <div class="staff-info">
               <div class="staff-name">{{ s.name }}</div>
               <div class="staff-role">{{ s.role }}</div>
@@ -78,19 +89,26 @@
             </div>
             <div class="staff-actions">
               <button class="icon-btn" @click="editStaff(s)" title="Edit">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                </svg>
               </button>
-              <button class="icon-btn icon-btn--danger" @click="deleteStaff(s.id)" title="Delete">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+              <button class="icon-btn icon-btn--danger" @click="doDeleteStaff(s.id)" title="Delete">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                  <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+                </svg>
               </button>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- ── TAB: Attendance ────────────────────────────────────────────── -->
+      <!-- ── TAB: Attendance ──────────────────────────────────────────────── -->
       <div v-if="activeTab === 'attendance'" class="tab-content">
-        <!-- Month selector -->
+
+        <!-- Month nav -->
         <div class="month-bar">
           <button class="date-nav-btn" @click="changeMonth(-1)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
@@ -101,7 +119,14 @@
           </button>
         </div>
 
-        <div v-if="staffList.length === 0" class="empty-state">
+        <!-- Day summary chips -->
+        <div class="days-summary">
+          <span class="days-chip">📅 Total days: <strong>{{ daysInMonth }}</strong></span>
+          <span class="days-chip days-chip--work">✅ Working (Mon–Sat): <strong>{{ workingDays }}</strong></span>
+          <span class="days-chip days-chip--off">🔴 Sundays (off): <strong>{{ sundayCount }}</strong></span>
+        </div>
+
+        <div v-if="!isLoading && staffList.length === 0" class="empty-state">
           <p>Add staff members first to track attendance.</p>
         </div>
 
@@ -110,50 +135,57 @@
             <thead>
               <tr>
                 <th class="att-name-col">Staff</th>
-                <th v-for="day in daysInMonth" :key="day"
-                    class="att-day-col"
-                    :class="{ 'att-day--today': isToday(day), 'att-day--sun': isSunday(day) }">
+                <th
+                  v-for="day in daysInMonth" :key="day"
+                  class="att-day-col"
+                  :class="{ 'att-day--today': isToday(day), 'att-day--sun': isSunday(day) }">
                   <div class="day-num">{{ day }}</div>
                   <div class="day-wd">{{ weekdayShort(day) }}</div>
                 </th>
-                <th class="att-total-col">Present</th>
-                <th class="att-total-col">Absent</th>
+                <th class="att-total-col">P</th>
+                <th class="att-total-col">A</th>
+                <th class="att-total-col">H</th>
               </tr>
             </thead>
             <tbody>
               <tr v-for="s in staffList" :key="s.id">
                 <td class="att-name-col">
                   <div class="att-name-cell">
-                    <div class="mini-avatar" :style="{ background: s.color }">{{ initials(s.name) }}</div>
+                    <div class="mini-avatar" :style="{ background: avatarColor(s.id) }">{{ initials(s.name) }}</div>
                     <span>{{ s.name.split(' ')[0] }}</span>
                   </div>
                 </td>
-                <td v-for="day in daysInMonth" :key="day" class="att-day-col" :class="{ 'att-day--sun': isSunday(day) }">
+                <td
+                  v-for="day in daysInMonth" :key="day"
+                  class="att-day-col" :class="{ 'att-day--sun': isSunday(day) }">
                   <button
-                    class="att-btn"
-                    :class="attClass(s.id, day)"
+                    class="att-btn" :class="attClass(s.id, day)"
                     @click="toggleAtt(s.id, day)"
-                    :title="attLabel(s.id, day)"
-                  >
+                    :title="attLabel(s.id, day)">
                     {{ attSymbol(s.id, day) }}
                   </button>
                 </td>
                 <td class="att-total-col att-total--present">{{ presentCount(s.id) }}</td>
                 <td class="att-total-col att-total--absent">{{ absentCount(s.id) }}</td>
+                <td class="att-total-col att-total--half">{{ halfCount(s.id) }}</td>
               </tr>
             </tbody>
           </table>
         </div>
+
         <p class="att-legend">
           <span class="leg-p">P</span> Present &nbsp;
           <span class="leg-a">A</span> Absent &nbsp;
           <span class="leg-h">H</span> Half-day &nbsp;
           <span class="leg-o">–</span> Not marked
+          <em class="leg-note">Tap a cell to cycle status. Each tap auto-saves to Google Sheet.</em>
         </p>
       </div>
 
-      <!-- ── TAB: Payment ───────────────────────────────────────────────── -->
+      <!-- ── TAB: Salary / Payment ────────────────────────────────────────── -->
       <div v-if="activeTab === 'payment'" class="tab-content">
+
+        <!-- Month nav -->
         <div class="month-bar">
           <button class="date-nav-btn" @click="changeMonth(-1)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
@@ -164,14 +196,15 @@
           </button>
         </div>
 
-        <div v-if="staffList.length === 0" class="empty-state">
+        <div v-if="!isLoading && staffList.length === 0" class="empty-state">
           <p>Add staff members first.</p>
         </div>
 
         <div v-else class="payment-grid">
           <div v-for="s in staffList" :key="s.id" class="payment-card">
+
             <div class="pay-header">
-              <div class="staff-avatar" :style="{ background: s.color }">{{ initials(s.name) }}</div>
+              <div class="staff-avatar" :style="{ background: avatarColor(s.id) }">{{ initials(s.name) }}</div>
               <div>
                 <div class="staff-name">{{ s.name }}</div>
                 <div class="staff-role">{{ s.role }}</div>
@@ -184,42 +217,60 @@
                 <span class="pay-val">₹{{ Number(s.salary).toLocaleString('en-IN') }}</span>
               </div>
               <div class="pay-row">
-                <span class="pay-label">Working days</span>
+                <span class="pay-label">Working days (Mon–Sat)</span>
                 <span class="pay-val">{{ workingDays }} days</span>
               </div>
               <div class="pay-row">
                 <span class="pay-label">Present days</span>
-                <span class="pay-val pay-val--ok">{{ presentCount(s.id) }} <span style="font-size:10px">(+{{ halfCount(s.id) }} half)</span></span>
+                <span class="pay-val pay-val--ok">
+                  {{ presentCount(s.id) }}
+                  <span style="font-size:10px;color:var(--color-text-muted)">
+                    (+{{ halfCount(s.id) }} half)
+                  </span>
+                </span>
               </div>
               <div class="pay-row">
                 <span class="pay-label">Per-day rate</span>
                 <span class="pay-val">₹{{ perDay(s).toLocaleString('en-IN') }}</span>
               </div>
+
               <div class="pay-row pay-row--divider">
                 <span class="pay-label">Earned (attendance)</span>
                 <span class="pay-val">₹{{ earned(s).toLocaleString('en-IN') }}</span>
               </div>
 
-              <!-- Advance / Pending adjustments -->
+              <!-- Adjustments — use :value + @change to avoid v-model crash -->
               <div class="pay-row">
-                <span class="pay-label">Advance paid</span>
+                <span class="pay-label">Advance deducted</span>
                 <div class="pay-input-wrap">
                   <span class="pay-currency">₹</span>
-                  <input type="number" class="pay-input" v-model.number="adjustments[s.id].advance" min="0" placeholder="0" />
+                  <input
+                    type="number" class="pay-input" min="0" placeholder="0"
+                    :value="safeAdj(s.id).advance"
+                    @change="updateAdj(s.id, 'advance', $event.target.value)"
+                  />
                 </div>
               </div>
               <div class="pay-row">
                 <span class="pay-label">Pending (prev. month)</span>
                 <div class="pay-input-wrap">
                   <span class="pay-currency">₹</span>
-                  <input type="number" class="pay-input" v-model.number="adjustments[s.id].pending" min="0" placeholder="0" />
+                  <input
+                    type="number" class="pay-input" min="0" placeholder="0"
+                    :value="safeAdj(s.id).pending"
+                    @change="updateAdj(s.id, 'pending', $event.target.value)"
+                  />
                 </div>
               </div>
               <div class="pay-row">
                 <span class="pay-label">Bonus / Extra</span>
                 <div class="pay-input-wrap">
                   <span class="pay-currency">₹</span>
-                  <input type="number" class="pay-input" v-model.number="adjustments[s.id].bonus" min="0" placeholder="0" />
+                  <input
+                    type="number" class="pay-input" min="0" placeholder="0"
+                    :value="safeAdj(s.id).bonus"
+                    @change="updateAdj(s.id, 'bonus', $event.target.value)"
+                  />
                 </div>
               </div>
 
@@ -230,7 +281,7 @@
             </div>
 
             <div class="pay-actions">
-              <button class="btn-payslip" @click="markPaid(s)">
+              <button class="btn-payslip" @click="handleMarkPaid(s)">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg>
                 Mark paid
               </button>
@@ -242,17 +293,19 @@
               </button>
             </div>
 
-            <div v-if="paidStatus[s.id + '_' + monthKey]" class="paid-badge">
+            <!-- Paid badge -->
+            <div v-if="paid[String(s.id) + '_' + monthKey]" class="paid-badge">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
               Paid
             </div>
+
           </div>
         </div>
       </div>
 
-    </template>
+    </template><!-- /isOwner -->
 
-    <!-- ══ ADD / EDIT STAFF MODAL ══════════════════════════════════════════ -->
+    <!-- ══ ADD / EDIT STAFF MODAL ══════════════════════════════════════════════ -->
     <transition name="modal">
       <div v-if="staffModal.show" class="modal-backdrop" @click.self="staffModal.show = false">
         <div class="modal-box">
@@ -301,15 +354,15 @@
           </div>
           <div class="modal-footer">
             <button class="btn-cancel" @click="staffModal.show = false">Cancel</button>
-            <button class="btn-save" @click="saveStaff">
-              {{ staffModal.editing ? 'Save changes' : 'Add staff member' }}
+            <button class="btn-save" @click="saveStaffMember" :disabled="isSaving">
+              {{ isSaving ? 'Saving…' : (staffModal.editing ? 'Save changes' : 'Add staff member') }}
             </button>
           </div>
         </div>
       </div>
     </transition>
 
-    <!-- ══ CHANGE PIN MODAL ════════════════════════════════════════════════ -->
+    <!-- ══ CHANGE PIN MODAL ══════════════════════════════════════════════════ -->
     <transition name="modal">
       <div v-if="showPinModal" class="modal-backdrop" @click.self="showPinModal = false">
         <div class="modal-box" style="max-width:340px">
@@ -332,8 +385,8 @@
               <label class="form-label">Confirm new PIN</label>
               <input class="form-input" type="password" inputmode="numeric" maxlength="6" v-model="pinChange.confirm" placeholder="••••" />
             </div>
-            <p v-if="pinChange.error" class="form-error">{{ pinChange.error }}</p>
-            <p v-if="pinChange.success" style="color:var(--color-success);font-size:12px">PIN changed successfully!</p>
+            <p v-if="pinChange.error"   class="form-error">{{ pinChange.error }}</p>
+            <p v-if="pinChange.success" style="color:var(--color-success);font-size:12px">✓ PIN changed successfully!</p>
           </div>
           <div class="modal-footer">
             <button class="btn-cancel" @click="showPinModal = false">Cancel</button>
@@ -347,325 +400,379 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
+import { useAuth }  from '@/composables/useAuth'
 import { useStaff } from '@/composables/useStaff'
-import { useAuth } from '@/composables/useAuth'
 
-/* ───────── AUTH (FIXED) ───────── */
-const { isOwner, login } = useAuth()
+// ── AUTH ───────────────────────────────────────────────────────────────────────
+const { isOwner, login, setPin, getPin } = useAuth()
 
 const pinDigits = ref(['', '', '', ''])
-const pinRefs = []
-const pinError = ref(false)
+const pinRefs   = ref([])
+const pinError  = ref(false)
 
-function onPinInput(index) {
+function onPinInput(i) {
   pinError.value = false
-  if (pinDigits.value[index] && index < 3) {
-    pinRefs[index + 1]?.focus()
+  if (pinDigits.value[i] && i < 3) nextTick(() => pinRefs.value[i + 1]?.focus())
+}
+function onPinBack(i) {
+  if (!pinDigits.value[i] && i > 0) {
+    pinDigits.value[i - 1] = ''
+    nextTick(() => pinRefs.value[i - 1]?.focus())
   }
 }
-
-function onPinBack(index) {
-  if (!pinDigits.value[index] && index > 0) {
-    pinRefs[index - 1]?.focus()
-  }
-}
-
 function submitPin() {
-  const enteredPin = pinDigits.value.join('')
-
-  if (login(enteredPin)) {
-    pinError.value = false
+  const pin = pinDigits.value.join('')
+  if (pin.length < 4) return
+  if (login(pin)) {
+    pinError.value  = false
     pinDigits.value = ['', '', '', '']
   } else {
-    pinError.value = true
+    pinError.value  = true
     pinDigits.value = ['', '', '', '']
-    pinRefs[0]?.focus()
+    nextTick(() => pinRefs.value[0]?.focus())
+    setTimeout(() => (pinError.value = false), 2000)
   }
 }
+// Auto-submit when all 4 digits filled
+watch(pinDigits, (val) => { if (val.join('').length === 4) submitPin() }, { deep: true })
+onMounted(() => { if (!isOwner.value) nextTick(() => pinRefs.value[0]?.focus()) })
 
-/* ───────── API ───────── */
+// ── COMPOSABLE ─────────────────────────────────────────────────────────────────
 const {
-  staff,
+  staff: staffList,
   attendance,
   adjustments,
   paid,
+  isLoading,
+  isSaving,
+  error,
   fetchStaff,
   saveStaff: apiSaveStaff,
   deleteStaff: apiDeleteStaff,
-  saveAttendance: apiSaveAttendance,
-  saveAdjustment: apiSaveAdjustment,
-  markPaid: apiMarkPaid
+  saveAttendanceCell,
+  saveAdjustment,
+  markPaid: apiMarkPaid,
 } = useStaff()
 
-const staffList = staff
-const paidStatus = paid
+// ── TABS ───────────────────────────────────────────────────────────────────────
+const activeTab = ref('staff')
+const tabs = [
+  {
+    id: 'staff', label: 'Staff List',
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>'
+  },
+  {
+    id: 'attendance', label: 'Attendance',
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>'
+  },
+  {
+    id: 'payment', label: 'Salary',
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12"/><path d="M6 7h12"/><path d="M6 11h5a4 4 0 1 0 0-8"/><path d="M6 11l8 10"/></svg>'
+  },
+]
 
-/* ───────── MONTH ───────── */
+// ── MONTH ──────────────────────────────────────────────────────────────────────
 const viewDate = ref(new Date())
 
 const monthKey = computed(() => {
   const d = viewDate.value
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
 })
-
-onMounted(() => fetchStaff(monthKey.value))
-watch(monthKey, (m) => fetchStaff(m))
-
-/* ───────── STAFF MODAL ───────── */
-const staffModal = reactive({
-  show: false,
-  editing: false,
-  editId: null,
-  form: { name: '', role: '', mobile: '', salary: '', joinDate: '' },
-  errors: {}
+const monthLabel = computed(() =>
+  viewDate.value.toLocaleString('en-IN', { month: 'long', year: 'numeric' })
+)
+const daysInMonth = computed(() => {
+  const d = viewDate.value
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
 })
-
-function validateStaffForm() {
-  const e = {}
-  if (!staffModal.form.name.trim()) e.name = 'Required'
-  if (!/^\d{7,15}$/.test(staffModal.form.mobile)) e.mobile = 'Invalid mobile'
-  if (!staffModal.form.salary) e.salary = 'Required'
-  staffModal.errors = e
-  return Object.keys(e).length === 0
-}
-
-async function saveStaff() {
-  if (!validateStaffForm()) return
-
-  await apiSaveStaff({
-    id: staffModal.editId || Date.now().toString(),
-    ...staffModal.form
-  })
-
-  staffModal.show = false
-  fetchStaff(monthKey.value)
-}
-
-async function deleteStaff(id) {
-  if (!confirm('Delete staff?')) return
-  await apiDeleteStaff(id)
-  fetchStaff(monthKey.value)
-}
-
-/* ───────── ATTENDANCE ───────── */
-function getKey(id) {
-  return `${id}_${monthKey.value}`
-}
-
-async function toggleAtt(id, day) {
-  const key = getKey(id)
-
-  if (!attendance.value[key]) attendance.value[key] = {}
-
-  const cur = attendance.value[key][day] || ''
-  const cycle = ['', 'P', 'A', 'H']
-  const next = cycle[(cycle.indexOf(cur) + 1) % cycle.length]
-
-  attendance.value[key][day] = next
-
-  await apiSaveAttendance(id, monthKey.value, attendance.value[key])
-}
-
-/* ───────── AUTO SAVE PAYMENT ───────── */
-watch(adjustments, (val) => {
-  Object.keys(val).forEach(id => {
-    apiSaveAdjustment(id, monthKey.value, val[id])
-  })
-}, { deep: true })
-
-/* ───────── MARK PAID ───────── */
-async function markPaid(s) {
-  await apiMarkPaid(s.id, monthKey.value)
-  fetchStaff(monthKey.value)
-}
-
-/* ───────── BONUS: AUTO SUBMIT PIN ───────── */
-watch(pinDigits, (val) => {
-  if (val.join('').length === 4) {
-    submitPin()
+const workingDays = computed(() => {
+  const d = viewDate.value
+  let count = 0
+  for (let day = 1; day <= daysInMonth.value; day++) {
+    if (new Date(d.getFullYear(), d.getMonth(), day).getDay() !== 0) count++
   }
-}, { deep: true })
+  return count
+})
+const sundayCount = computed(() => daysInMonth.value - workingDays.value)
 
-/* ───────── TABS ───────── */
-const activeTab = ref('staff')
-
-const tabs = [
-  { id: 'staff',      label: 'Staff List',  icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>' },
-  { id: 'attendance', label: 'Attendance',  icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>' },
-  { id: 'payment',    label: 'Salary',      icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3h12"/><path d="M6 7h12"/><path d="M6 11h5a4 4 0 1 0 0-8"/><path d="M6 11l8 10"/></svg>' },
-]
-
-/* ───────── MONTH LOGIC ───────── */
 function changeMonth(offset) {
   const d = new Date(viewDate.value)
   d.setMonth(d.getMonth() + offset)
   viewDate.value = d
 }
 
-const monthLabel = computed(() => {
-  return viewDate.value.toLocaleString('default', { month: 'long', year: 'numeric' })
-})
+// ── LOAD ───────────────────────────────────────────────────────────────────────
+onMounted(() => { if (isOwner.value) fetchStaff(monthKey.value) })
+watch(isOwner, (v) => { if (v) fetchStaff(monthKey.value) })
+watch(monthKey, (m) => { if (isOwner.value) fetchStaff(m) })
 
-const daysInMonth = computed(() => {
-  const d = viewDate.value
-  return new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()
-})
-
-/* ───────── DATE HELPERS ───────── */
+// ── DATE HELPERS ───────────────────────────────────────────────────────────────
 function isToday(day) {
-  const today = new Date()
-  return (
-    today.getDate() === day &&
-    today.getMonth() === viewDate.value.getMonth() &&
-    today.getFullYear() === viewDate.value.getFullYear()
-  )
+  const now = new Date(), d = viewDate.value
+  return now.getFullYear() === d.getFullYear() && now.getMonth() === d.getMonth() && now.getDate() === day
 }
-
 function isSunday(day) {
-  const d = new Date(viewDate.value.getFullYear(), viewDate.value.getMonth(), day)
-  return d.getDay() === 0
+  return new Date(viewDate.value.getFullYear(), viewDate.value.getMonth(), day).getDay() === 0
 }
-
 function weekdayShort(day) {
-  const d = new Date(viewDate.value.getFullYear(), viewDate.value.getMonth(), day)
-  return d.toLocaleDateString('en-IN', { weekday: 'short' })
+  return new Date(viewDate.value.getFullYear(), viewDate.value.getMonth(), day)
+    .toLocaleDateString('en-IN', { weekday: 'short' }).slice(0, 2)
 }
 
-/* ───────── ATTENDANCE UI ───────── */
-function attSymbol(id, day) {
-  const key = getKey(id)
-  return attendance.value[key]?.[day] || '–'
+// ── ATTENDANCE HELPERS ─────────────────────────────────────────────────────────
+// attendance is keyed by STRING staffId → { dayNumber: status }
+// NEVER use staffId_month as key — that was the original bug.
+function getAtt(staffId, day) {
+  return attendance.value[String(staffId)]?.[Number(day)] || ''
 }
 
-function attClass(id, day) {
-  const v = attSymbol(id, day)
-  return {
-    'att-p': v === 'P',
-    'att-a': v === 'A',
-    'att-h': v === 'H'
+async function toggleAtt(staffId, day) {
+  const sid  = String(staffId)
+  const dNum = Number(day)
+  if (!attendance.value[sid]) attendance.value[sid] = {}
+  const cur  = attendance.value[sid][dNum] || ''
+  const cycle = ['', 'P', 'A', 'H']
+  const next  = cycle[(cycle.indexOf(cur) + 1) % cycle.length]
+  attendance.value[sid][dNum] = next
+  await saveAttendanceCell(sid, monthKey.value, dNum, next)
+}
+
+function attSymbol(staffId, day) { return getAtt(staffId, day) || '–' }
+function attClass(staffId, day) {
+  const v = getAtt(staffId, day)
+  return { 'att-p': v === 'P', 'att-a': v === 'A', 'att-h': v === 'H' }
+}
+function attLabel(staffId, day) {
+  const v = getAtt(staffId, day)
+  return v === 'P' ? 'Present' : v === 'A' ? 'Absent' : v === 'H' ? 'Half-day' : 'Not marked'
+}
+
+function presentCount(staffId) {
+  return Object.values(attendance.value[String(staffId)] || {}).filter(v => v === 'P').length
+}
+function absentCount(staffId) {
+  return Object.values(attendance.value[String(staffId)] || {}).filter(v => v === 'A').length
+}
+function halfCount(staffId) {
+  return Object.values(attendance.value[String(staffId)] || {}).filter(v => v === 'H').length
+}
+
+// ── ADJUSTMENT SAFE ACCESSOR ───────────────────────────────────────────────────
+// FIX: always returns a guaranteed object → prevents "Cannot read properties of undefined"
+function safeAdj(staffId) {
+  return adjustments.value[String(staffId)] || { advance: 0, pending: 0, bonus: 0 }
+}
+
+// Update one field and save to sheet immediately
+function updateAdj(staffId, field, rawVal) {
+  const sid = String(staffId)
+  if (!adjustments.value[sid]) {
+    adjustments.value[sid] = { advance: 0, pending: 0, bonus: 0 }
   }
+  adjustments.value[sid][field] = Number(rawVal) || 0
+  saveAdjustment(sid, monthKey.value, adjustments.value[sid], paid.value[sid + '_' + monthKey.value] || false)
 }
 
-function attLabel(id, day) {
-  return attSymbol(id, day)
-}
-
-/* ───────── COUNTING ───────── */
-function presentCount(id) {
-  const key = getKey(id)
-  const data = attendance.value[key] || {}
-  return Object.values(data).filter(v => v === 'P').length
-}
-
-function absentCount(id) {
-  const key = getKey(id)
-  const data = attendance.value[key] || {}
-  return Object.values(data).filter(v => v === 'A').length
-}
-
-function halfCount(id) {
-  const key = getKey(id)
-  const data = attendance.value[key] || {}
-  return Object.values(data).filter(v => v === 'H').length
-}
-
-/* ───────── SALARY CALCULATION ───────── */
-const workingDays = computed(() => daysInMonth.value)
-
+// ── SALARY CALC ────────────────────────────────────────────────────────────────
 function perDay(s) {
-  return Number(s.salary || 0) / workingDays.value
+  return workingDays.value > 0 ? Math.round(Number(s.salary || 0) / workingDays.value) : 0
 }
-
 function earned(s) {
-  const p = presentCount(s.id)
-  const h = halfCount(s.id)
-  return Math.round(perDay(s) * (p + h * 0.5))
+  return Math.round(perDay(s) * (presentCount(s.id) + halfCount(s.id) * 0.5))
 }
-
 function netPay(s) {
-  const adj = adjustments.value[s.id] || {}
-  return (
-    earned(s) -
-    (adj.advance || 0) +
-    (adj.pending || 0) +
-    (adj.bonus || 0)
-  )
+  const a = safeAdj(s.id)
+  // Earned − advance − pending + bonus
+  return Math.max(0, earned(s) - (a.advance || 0) - (a.pending || 0) + (a.bonus || 0))
 }
 
-/* ───────── UI HELPERS ───────── */
+// ── MARK PAID ──────────────────────────────────────────────────────────────────
+async function handleMarkPaid(s) {
+  await apiMarkPaid(s.id, monthKey.value)
+}
+
+// ── PAYSLIP VIA WHATSAPP ───────────────────────────────────────────────────────
+function sendPayslip(s) {
+  const a       = safeAdj(s.id)
+  const advance = Number(a.advance || 0)
+  const pending = Number(a.pending || 0)
+  const bonus   = Number(a.bonus   || 0)
+  const net     = netPay(s)
+
+  const lines = [
+    '✂️ *Scintillate Unisex Salon*',
+    '📋 Salary Slip — ' + monthLabel.value,
+    '─'.repeat(28), '',
+    '👤 *' + s.name + '* (' + s.role + ')',
+    '📞 ' + s.mobile, '',
+    'Monthly Salary    : ₹' + Number(s.salary).toLocaleString('en-IN'),
+    'Working Days      : ' + workingDays.value + ' (Mon–Sat)',
+    'Present Days      : ' + presentCount(s.id),
+    'Half Days         : ' + halfCount(s.id),
+    'Absent Days       : ' + absentCount(s.id),
+    'Per Day Rate      : ₹' + perDay(s).toLocaleString('en-IN'),
+    'Earned Amount     : ₹' + earned(s).toLocaleString('en-IN'), '',
+    'Advance Deducted  : ₹' + advance.toLocaleString('en-IN'),
+    'Pending Deducted  : ₹' + pending.toLocaleString('en-IN'),
+    'Bonus Added       : ₹' + bonus.toLocaleString('en-IN'), '',
+    '─'.repeat(28),
+    '*Net Payable      : ₹' + net.toLocaleString('en-IN') + '*',
+    '─'.repeat(28), '',
+    'Thank you! 🙏',
+  ]
+  const msg    = lines.join('\n')
+  const digits = String(s.mobile).replace(/\D/g, '')
+  const phone  = digits.length === 10 ? '91' + digits : digits
+  window.open('https://wa.me/' + phone + '?text=' + encodeURIComponent(msg), '_blank')
+}
+
+// ── AVATAR COLOR ───────────────────────────────────────────────────────────────
+const COLORS = ['#8B6F47','#1B4F72','#7B2D42','#1E6B45','#6B4F9C','#B87333','#2C7873','#C0392B']
+function avatarColor(staffId) {
+  const idx = staffList.value.findIndex(s => String(s.id) === String(staffId))
+  return COLORS[Math.max(idx, 0) % COLORS.length]
+}
 function initials(name) {
-  return name
-    ?.split(' ')
-    .map(n => n[0])
-    .join('')
-    .toUpperCase()
+  return (name || '').split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
 }
 
-/* ───────── STAFF MODAL ───────── */
+// ── STAFF CRUD ─────────────────────────────────────────────────────────────────
+const staffModal = reactive({
+  show: false, editing: false, editId: null,
+  form:   { name: '', role: '', mobile: '', salary: '', joinDate: '' },
+  errors: {}
+})
+
 function openAddStaff() {
-  staffModal.show = true
+  staffModal.show    = true
   staffModal.editing = false
-  staffModal.editId = null
-  staffModal.form = { name: '', role: '', mobile: '', salary: '', joinDate: '' }
+  staffModal.editId  = null
+  staffModal.form    = { name: '', role: '', mobile: '', salary: '', joinDate: '' }
+  staffModal.errors  = {}
+}
+function editStaff(s) {
+  staffModal.show    = true
+  staffModal.editing = true
+  staffModal.editId  = s.id
+  staffModal.form    = { name: s.name, role: s.role, mobile: String(s.mobile), salary: s.salary, joinDate: s.joinDate || '' }
+  staffModal.errors  = {}
 }
 
-function editStaff(s) {
-  staffModal.show = true
-  staffModal.editing = true
-  staffModal.editId = s.id
-  staffModal.form = { ...s }
+function validateStaffForm() {
+  const e = {}
+  if (!staffModal.form.name.trim())                            e.name   = 'Required'
+  if (!/^\d{7,15}$/.test(String(staffModal.form.mobile)))     e.mobile = 'Invalid mobile'
+  if (!staffModal.form.salary || staffModal.form.salary <= 0)  e.salary = 'Required'
+  staffModal.errors = e
+  return Object.keys(e).length === 0
+}
+
+async function saveStaffMember() {
+  if (!validateStaffForm()) return
+  await apiSaveStaff({
+    id:       staffModal.editId || Date.now().toString(),
+    name:     staffModal.form.name.trim(),
+    role:     staffModal.form.role,
+    mobile:   String(staffModal.form.mobile).trim(),
+    salary:   staffModal.form.salary,
+    joinDate: staffModal.form.joinDate || ''
+  })
+  staffModal.show = false
+  fetchStaff(monthKey.value)
+}
+
+async function doDeleteStaff(id) {
+  if (!confirm('Delete this staff member? Their attendance and payment data will also be removed.')) return
+  await apiDeleteStaff(id)
+  fetchStaff(monthKey.value)
+}
+
+// ── CHANGE PIN ─────────────────────────────────────────────────────────────────
+const showPinModal = ref(false)
+const pinChange    = reactive({ current: '', newPin: '', confirm: '', error: '', success: false })
+
+function changePin() {
+  pinChange.error   = ''
+  pinChange.success = false
+  if (pinChange.current !== getPin())          { pinChange.error = 'Current PIN is incorrect'; return }
+  if (pinChange.newPin.length < 4)             { pinChange.error = 'New PIN must be at least 4 digits'; return }
+  if (pinChange.newPin !== pinChange.confirm)  { pinChange.error = 'PINs do not match'; return }
+  setPin(pinChange.newPin)
+  pinChange.success = true
+  pinChange.current = pinChange.newPin = pinChange.confirm = ''
+  setTimeout(() => { showPinModal.value = false; pinChange.success = false }, 1500)
 }
 </script>
 
 <style scoped>
 .staff-page { display: flex; flex-direction: column; gap: 20px; }
 
+/* ── Loading / Error ── */
+.loading-bar {
+  display: flex; align-items: center; gap: 8px;
+  background: var(--color-accent-light); color: var(--color-accent);
+  padding: 9px 16px; border-radius: var(--radius-md);
+  font-size: 13px; font-weight: 500;
+}
+.loading-spinner {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid var(--color-accent); border-top-color: transparent;
+  animation: spin .7s linear infinite; flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.error-bar {
+  background: var(--color-danger-light); color: var(--color-danger);
+  padding: 9px 16px; border-radius: var(--radius-md); font-size: 13px; font-weight: 500;
+}
+
+/* ── Days summary ── */
+.days-summary { display: flex; gap: 8px; flex-wrap: wrap; }
+.days-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 5px 12px; border-radius: 99px; font-size: 12px;
+  background: var(--color-surface-2); border: 1px solid var(--color-border); color: var(--color-text-muted);
+}
+.days-chip strong { color: var(--color-text); }
+.days-chip--work { background:#ECFDF5; border-color:#86EFAC; color:#16A34A; }
+.days-chip--work strong { color:#15803D; }
+.days-chip--off  { background:#FEF2F2; border-color:#FCA5A5; color:#DC2626; }
+.days-chip--off strong { color:#B91C1C; }
+
 /* ── PIN gate ── */
 .pin-gate {
   position: fixed; inset: 0; z-index: 200;
-  background: rgba(26,23,20,0.6);
+  background: rgba(26,23,20,.6);
   display: flex; align-items: center; justify-content: center;
   backdrop-filter: blur(4px);
 }
 .pin-box {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 40px 36px;
-  text-align: center;
-  width: 340px;
-  box-shadow: var(--shadow-lg);
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg); padding: 40px 36px;
+  text-align: center; width: 340px; box-shadow: var(--shadow-lg);
 }
 .pin-icon {
   width: 60px; height: 60px; margin: 0 auto 16px;
   background: var(--color-accent-light); border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--color-accent);
+  display: flex; align-items: center; justify-content: center; color: var(--color-accent);
 }
 .pin-title { font-family: var(--font-display); font-size: 20px; margin-bottom: 6px; }
 .pin-sub   { font-size: 13px; color: var(--color-text-muted); margin-bottom: 24px; }
 .pin-inputs { display: flex; gap: 12px; justify-content: center; margin-bottom: 16px; }
 .pin-digit {
-  width: 52px; height: 56px; text-align: center;
-  font-size: 22px; font-weight: 600;
-  border: 2px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface-2);
-  color: var(--color-text);
+  width: 52px; height: 56px; text-align: center; font-size: 22px; font-weight: 600;
+  border: 2px solid var(--color-border); border-radius: var(--radius-md);
+  background: var(--color-surface-2); color: var(--color-text);
   outline: none; transition: border-color var(--transition);
 }
-.pin-digit:focus { border-color: var(--color-accent); }
-.pin-digit--error { border-color: var(--color-danger); animation: shake .3s; }
-@keyframes shake {
-  0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)}
-}
-.pin-error  { font-size: 12px; color: var(--color-danger); margin-bottom: 12px; }
-.pin-hint   { font-size: 11px; color: var(--color-text-light); margin-top: 12px; }
+.pin-digit:focus   { border-color: var(--color-accent); }
+.pin-digit--error  { border-color: var(--color-danger); animation: shake .3s; }
+@keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+.pin-error { font-size: 12px; color: var(--color-danger); margin-bottom: 12px; }
+.pin-hint  { font-size: 11px; color: var(--color-text-light); margin-top: 12px; }
 .pin-submit {
-  width: 100%; padding: 11px;
-  background: var(--color-accent); color: white; border: none;
-  border-radius: var(--radius-md); font-size: 14px; font-weight: 500;
+  width: 100%; padding: 11px; background: var(--color-accent); color: white;
+  border: none; border-radius: var(--radius-md); font-size: 14px; font-weight: 500;
   cursor: pointer; transition: background var(--transition);
 }
 .pin-submit:hover { background: var(--color-accent-hover); }
@@ -673,12 +780,9 @@ function editStaff(s) {
 /* ── Tabs ── */
 .tabs {
   display: flex; align-items: center; gap: 4px;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 8px 12px;
-  box-shadow: var(--shadow-sm);
-  flex-wrap: wrap;
+  background: var(--color-surface); border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg); padding: 8px 12px;
+  box-shadow: var(--shadow-sm); flex-wrap: wrap;
 }
 .tab {
   display: flex; align-items: center; gap: 7px;
@@ -687,15 +791,14 @@ function editStaff(s) {
   font-size: 13px; color: var(--color-text-muted);
   transition: background var(--transition), color var(--transition);
 }
-.tab:hover { background: var(--color-surface-2); color: var(--color-text); }
+.tab:hover   { background: var(--color-surface-2); color: var(--color-text); }
 .tab--active { background: var(--color-accent-light); color: var(--color-accent); font-weight: 500; }
-.tab-spacer { flex: 1; }
+.tab-spacer  { flex: 1; }
 .btn-add-staff {
   display: flex; align-items: center; gap: 6px;
   padding: 7px 14px; border-radius: var(--radius-md);
   background: var(--color-accent); color: white; border: none;
-  font-size: 12px; font-weight: 500; cursor: pointer;
-  transition: background var(--transition);
+  font-size: 12px; font-weight: 500; cursor: pointer; transition: background var(--transition);
 }
 .btn-add-staff:hover { background: var(--color-accent-hover); }
 .btn-pin-change {
@@ -705,7 +808,6 @@ function editStaff(s) {
   cursor: pointer; transition: background var(--transition);
 }
 .btn-pin-change:hover { background: var(--color-surface-2); }
-
 .tab-content { display: flex; flex-direction: column; gap: 16px; }
 
 /* ── Staff grid ── */
@@ -713,26 +815,22 @@ function editStaff(s) {
 .staff-card {
   background: var(--color-surface); border: 1px solid var(--color-border);
   border-radius: var(--radius-lg); padding: 20px;
-  display: flex; align-items: center; gap: 16px;
-  box-shadow: var(--shadow-sm); position: relative;
+  display: flex; align-items: center; gap: 16px; box-shadow: var(--shadow-sm);
 }
 .staff-avatar {
   width: 48px; height: 48px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
-  color: white; font-size: 16px; font-weight: 600;
-  font-family: var(--font-display); flex-shrink: 0;
-  background-color: #B7E4CE;
+  color: white; font-size: 16px; font-weight: 600; flex-shrink: 0;
 }
 .mini-avatar {
   width: 24px; height: 24px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   color: white; font-size: 10px; font-weight: 600; flex-shrink: 0;
-  background: #B7E4CE;
 }
-.staff-info { flex: 1; }
-.staff-name  { font-size: 14px; font-weight: 500; }
-.staff-role  { font-size: 12px; color: var(--color-text-muted); }
-.staff-mobile{ font-size: 11px; color: var(--color-text-light); }
+.staff-info    { flex: 1; }
+.staff-name    { font-size: 14px; font-weight: 500; }
+.staff-role    { font-size: 12px; color: var(--color-text-muted); }
+.staff-mobile  { font-size: 11px; color: var(--color-text-light); }
 .staff-salary-info { text-align: right; }
 .salary-label  { font-size: 10px; color: var(--color-text-light); }
 .salary-amount { font-family: var(--font-display); font-size: 16px; font-weight: 500; color: var(--color-accent); }
@@ -743,8 +841,8 @@ function editStaff(s) {
   color: var(--color-text-muted); display: flex; align-items: center; justify-content: center;
   cursor: pointer; transition: background var(--transition);
 }
-.icon-btn:hover { background: var(--color-surface-2); }
-.icon-btn--danger { color: var(--color-danger); border-color: #F09595; }
+.icon-btn:hover         { background: var(--color-surface-2); }
+.icon-btn--danger       { color: var(--color-danger); border-color: #F09595; }
 .icon-btn--danger:hover { background: var(--color-danger-light); }
 
 /* ── Month bar ── */
@@ -754,6 +852,7 @@ function editStaff(s) {
   border-radius: var(--radius-md); padding: 10px 16px;
   width: fit-content; box-shadow: var(--shadow-sm);
 }
+.month-label  { font-family: var(--font-display); font-size: 16px; font-weight: 500; min-width: 160px; text-align: center; }
 .date-nav-btn {
   width: 32px; height: 32px; border: 1px solid var(--color-border);
   border-radius: var(--radius-sm); background: none; cursor: pointer;
@@ -761,19 +860,13 @@ function editStaff(s) {
   color: var(--color-text); transition: background var(--transition);
 }
 .date-nav-btn:hover { background: var(--color-surface-2); }
-.month-label { font-family: var(--font-display); font-size: 16px; font-weight: 500; min-width: 160px; text-align: center; }
 
 /* ── Attendance table ── */
 .attendance-table-wrap {
-  overflow-x: auto;
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-sm);
+  overflow-x: auto; background: var(--color-surface);
+  border: 1px solid var(--color-border); border-radius: var(--radius-lg); box-shadow: var(--shadow-sm);
 }
-.attendance-table {
-  border-collapse: collapse; width: 100%; font-size: 11px;
-}
+.attendance-table { border-collapse: collapse; width: 100%; font-size: 11px; }
 .attendance-table th, .attendance-table td {
   border-right: 1px solid var(--color-border);
   border-bottom: 1px solid var(--color-border);
@@ -785,30 +878,36 @@ function editStaff(s) {
   font-weight: 500; color: var(--color-text-muted); font-size: 10px;
   position: sticky; top: 0; z-index: 2;
 }
-.att-name-col { min-width: 110px; text-align: left !important; padding: 0 8px !important; position: sticky; left: 0; z-index: 3; background: var(--color-surface); }
-.att-day-col  { min-width: 30px; width: 30px; }
-.att-total-col { min-width: 52px; font-weight: 600; }
+.att-name-col  { min-width: 110px; text-align: left !important; padding: 0 8px !important; position: sticky; left: 0; z-index: 3; background: var(--color-surface); }
+.att-day-col   { min-width: 30px; width: 30px; }
+.att-total-col { min-width: 32px; font-weight: 600; padding: 0 4px !important; }
 .att-total--present { color: var(--color-success); }
 .att-total--absent  { color: var(--color-danger); }
+.att-total--half    { color: var(--color-warning, #D97706); }
 .att-day--today th, .att-day--today td { background: var(--color-accent-xlt, #FAF6F1); }
-.att-day--sun  { color: var(--color-danger); opacity: 0.6; }
+.att-day--sun  { color: var(--color-danger); opacity: .65; }
 .day-num { font-size: 11px; font-weight: 600; }
 .day-wd  { font-size: 9px; color: var(--color-text-light); }
 .att-name-cell { display: flex; align-items: center; gap: 6px; padding: 8px 0; font-size: 12px; }
 .att-btn {
   width: 28px; height: 28px; border: none; border-radius: 4px;
-  font-size: 10px; font-weight: 700; cursor: pointer; background: var(--color-surface-2);
-  color: var(--color-text-muted); transition: background var(--transition);
+  font-size: 10px; font-weight: 700; cursor: pointer;
+  background: var(--color-surface-2); color: var(--color-text-muted);
+  transition: background var(--transition);
 }
 .att-btn.att-p { background: var(--color-success-light); color: var(--color-success); }
 .att-btn.att-a { background: var(--color-danger-light);  color: var(--color-danger);  }
-.att-btn.att-h { background: var(--color-warning-light); color: var(--color-warning); }
-.att-legend { font-size: 11px; color: var(--color-text-muted); display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.att-btn.att-h { background: #FEF3C7; color: #D97706; }
+.att-legend {
+  font-size: 11px; color: var(--color-text-muted);
+  display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+}
 .leg-p,.leg-a,.leg-h { padding: 2px 7px; border-radius: 4px; font-weight: 700; font-size: 10px; }
 .leg-p { background: var(--color-success-light); color: var(--color-success); }
 .leg-a { background: var(--color-danger-light);  color: var(--color-danger); }
-.leg-h { background: var(--color-warning-light); color: var(--color-warning); }
+.leg-h { background: #FEF3C7; color: #D97706; }
 .leg-o { color: var(--color-text-light); }
+.leg-note { font-size: 10px; color: var(--color-text-light); font-style: italic; }
 
 /* ── Payment grid ── */
 .payment-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 20px; }
@@ -854,9 +953,8 @@ function editStaff(s) {
 
 /* ── Modal ── */
 .modal-backdrop {
-  position: fixed; inset: 0; background: rgba(10,8,6,0.5);
-  display: flex; align-items: center; justify-content: center;
-  z-index: 1000; padding: 16px;
+  position: fixed; inset: 0; background: rgba(10,8,6,.5);
+  display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 16px;
 }
 .modal-box {
   background: var(--color-surface); border-radius: var(--radius-lg);
@@ -864,15 +962,13 @@ function editStaff(s) {
   max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-lg);
 }
 .modal-header {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 20px 24px 0;
+  display: flex; align-items: center; justify-content: space-between; padding: 20px 24px 0;
 }
-.modal-title  { font-family: var(--font-display); font-size: 18px; font-weight: 500; }
-.modal-close  {
+.modal-title { font-family: var(--font-display); font-size: 18px; font-weight: 500; }
+.modal-close {
   width: 32px; height: 32px; border: 1px solid var(--color-border);
   border-radius: var(--radius-sm); background: none; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  color: var(--color-text-muted);
+  display: flex; align-items: center; justify-content: center; color: var(--color-text-muted);
 }
 .modal-close:hover { background: var(--color-surface-2); }
 .modal-body   { padding: 20px 24px; display: flex; flex-direction: column; gap: 14px; }
@@ -886,7 +982,7 @@ function editStaff(s) {
   background: var(--color-surface); color: var(--color-text); outline: none;
   transition: border-color var(--transition);
 }
-.form-input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px rgba(139,111,71,0.1); }
+.form-input:focus { border-color: var(--color-accent); box-shadow: 0 0 0 3px rgba(139,111,71,.1); }
 .form-error { font-size: 11px; color: var(--color-danger); }
 .btn-cancel {
   padding: 9px 18px; border: 1px solid var(--color-border); border-radius: var(--radius-md);
@@ -897,7 +993,8 @@ function editStaff(s) {
   background: var(--color-accent); color: white; font-size: 13px;
   font-weight: 500; cursor: pointer; transition: background var(--transition);
 }
-.btn-save:hover { background: var(--color-accent-hover); }
+.btn-save:hover:not(:disabled) { background: var(--color-accent-hover); }
+.btn-save:disabled { opacity: .6; cursor: not-allowed; }
 .btn-primary {
   padding: 10px 20px; background: var(--color-accent); color: white;
   border: none; border-radius: var(--radius-md); cursor: pointer; font-size: 13px;
@@ -915,11 +1012,12 @@ function editStaff(s) {
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
-  .staff-grid    { grid-template-columns: 1fr; }
-  .payment-grid  { grid-template-columns: 1fr; }
-  .form-row-2    { grid-template-columns: 1fr; }
-  .tabs          { flex-wrap: wrap; gap: 6px; }
-  .tab-spacer    { display: none; }
-  .month-label   { min-width: 120px; font-size: 14px; }
+  .staff-grid   { grid-template-columns: 1fr; }
+  .payment-grid { grid-template-columns: 1fr; }
+  .form-row-2   { grid-template-columns: 1fr; }
+  .tabs         { flex-wrap: wrap; gap: 6px; }
+  .tab-spacer   { display: none; }
+  .month-label  { min-width: 120px; font-size: 14px; }
+  .days-summary { gap: 6px; }
 }
 </style>
