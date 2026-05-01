@@ -1,7 +1,7 @@
 // composables/useStaff.js
 import { ref } from 'vue'
 
-export const API_URL = 'https://script.google.com/macros/s/AKfycbxj2giDlKEdZLBrvJGTGSgsgs90fDyEJdXUZMemshy-PLae61QoHyEOuK6Pu7LlW_GB8g/exec'
+export const API_URL = 'https://script.google.com/macros/s/AKfycbxqjjlFQX3k7VyAxImzOJHDRbxBW_ZaBrQGrc3vJ0oIY3TFn9KPI_F0LSdWbMqZovX0jw/exec'
 
 export function useStaff() {
   // staff list
