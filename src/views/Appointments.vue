@@ -147,6 +147,7 @@
       @close="closeModal"
       @submit="onSubmit"
       @delete="onDelete"
+      @go-to-billing="onGoToBilling"
     />
 
   </div>
@@ -154,12 +155,14 @@
 
 <script setup>
 import { ref, computed, watch, nextTick, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import BookingModal from '@/components/BookingModal.vue'
 import { useBookings, CHAIRS, TIME_SLOTS } from '@/composables/useBookings'
 import { useWhatsApp } from '@/composables/useWhatsApp'
 
 const { getBookingsForDate, addBooking, deleteBooking, isLoading, isSaving, apiError } = useBookings()
 const { sendReminder, scheduleAllReminders, sendDailySummary, requestNotificationPermission } = useWhatsApp()
+const router = useRouter()
 
 // ── state ─────────────────────────────────────────────────────────────────────
 const currentDate  = ref(new Date())
@@ -308,6 +311,19 @@ function rescheduleReminders() {
   if (isToday.value) {
     scheduleAllReminders(bookings.value, CHAIRS, currentDate.value)
   }
+}
+
+// ── Go to Billing (from BookingModal "Create Bill") ─────────────────────────
+function onGoToBilling(data) {
+  closeModal()
+  router.push({
+    path: '/services',
+    query: {
+      name: data.name || '',
+      phone: data.phone || '',
+      services: data.services || '',
+    }
+  })
 }
 
 // ── init ──────────────────────────────────────────────────────────────────────

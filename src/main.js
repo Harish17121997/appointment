@@ -4,6 +4,7 @@ import App from './App.vue'
 import Dashboard from './views/Dashboard.vue'
 import Appointments from './views/Appointments.vue'
 import Staff from './views/Staff.vue'
+import Services from './views/Services.vue'
 import './style.css'
 
 const router = createRouter({
@@ -13,6 +14,7 @@ const router = createRouter({
     { path: '/dashboard', component: Dashboard, meta: { title: 'Dashboard' } },
     { path: '/appointments', component: Appointments, meta: { title: 'Appointments' } },
     { path: '/staff', component: Staff, meta: { title: 'Staff' } },
+    { path: '/services', component: Services, meta: { title: 'Staff' }},
   ]
 })
 
