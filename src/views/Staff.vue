@@ -26,7 +26,7 @@
           </div>
           <p v-if="pinError" class="pin-error">Incorrect PIN. Try again.</p>
           <button class="pin-submit" @click="submitPin">Unlock</button>
-          <p class="pin-hint">Default PIN: <strong>1234</strong></p>
+          <!-- <p class="pin-hint">Default PIN: <strong></strong></p> -->
         </div>
       </div>
     </transition>

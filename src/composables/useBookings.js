@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 
 //  Your deployed Apps Script URL
-export const API_URL = 'https://script.google.com/macros/s/AKfycbxqjjlFQX3k7VyAxImzOJHDRbxBW_ZaBrQGrc3vJ0oIY3TFn9KPI_F0LSdWbMqZovX0jw/exec'
+export const API_URL = 'https://script.google.com/macros/s/AKfycbx3lXRJdgP7uHFqU82c7T0kxDPW3HEWUcB3LpyGrGlAKpMFIckpWFzuFLSDuGvfzQzDTQ/exec'
 
 // ─── CONSTANTS ───────────────────────────────────────────────────────────────
 export const TIME_SLOTS = [
@@ -37,39 +37,37 @@ export function useBookings() {
   const isSaving  = ref(false)
   const apiError  = ref('')
 
-  // NEVER use toLocaleDateString() — it returns '01/05/2026' (zero-padded)
-  // on some Android/iOS browsers, which mismatches the API's expected 'D/M/YYYY'.
-  // NEVER use toISOString() — it's UTC-based, shifts dates by 1 day in IST (UTC+5:30).
-  // That's why today + next ~13 days (single-digit days 1-9 and 10-13) were broken.
-  // Fix: build from LOCAL date parts — always returns '1/5/2026' format, every device.
+  // 🔥 FIXED: MATCH BACKEND FORMAT (DD-MM-YYYY)
   function dateKey(date) {
-    const d = date instanceof Date ? date : new Date(date)
-
+    const d   = date instanceof Date ? date : new Date(date)
     const day = String(d.getDate()).padStart(2, '0')
-    const month = String(d.getMonth() + 1).padStart(2, '0')
-    const year = d.getFullYear()
-
-    return `${day}/${month}/${year}`   // ✅ 02/05/2026
+    const mon = String(d.getMonth() + 1).padStart(2, '0')
+    return `${day}-${mon}-${d.getFullYear()}`   // ✅ FIXED
   }
 
-  // ─── FETCH bookings for a specific date ──────────────────────────────────
+  // ─── FETCH bookings ────────────────────────────────────────────────────────
   async function getBookingsForDate(date) {
     isLoading.value = true
     apiError.value  = ''
+
     try {
-      const res  = await fetch(`${API_URL}?action=fetch&date=${encodeURIComponent(dateKey(date))}`)
+      const key = dateKey(date)
+
+      const res  = await fetch(`${API_URL}?action=fetch&date=${key}`)
       const json = await res.json()
+
       return json.data || {}
+
     } catch (err) {
       console.error('Fetch error:', err)
-      apiError.value = 'Failed to load bookings. Check your connection.'
+      apiError.value = 'Failed to load bookings.'
       return {}
     } finally {
       isLoading.value = false
     }
   }
 
-  // ─── FETCH stats for dashboard (last 7 days + today counts) ──────────────
+  // ─── STATS ────────────────────────────────────────────────────────────────
   async function getStats() {
     isLoading.value = true
     apiError.value = ''
@@ -119,10 +117,11 @@ export function useBookings() {
   async function addBooking(date, slotKey, data) {
     isSaving.value = true
     apiError.value = ''
+
     try {
       const params = new URLSearchParams({
         action:    'add',
-        date:      dateKey(date),
+        date:      dateKey(date),   // ✅ FIXED FORMAT
         slotKey,
         chairType: data.chairType,
         name:      data.name,
@@ -131,9 +130,12 @@ export function useBookings() {
         notes:     data.notes || '',
         scheduleReminder: data.scheduleReminder ? '1' : '0'
       })
+
       const res  = await fetch(`${API_URL}?${params.toString()}`)
       const json = await res.json()
+
       return json.success !== false
+
     } catch (err) {
       console.error('Add booking error:', err)
       apiError.value = 'Failed to save booking.'
@@ -146,9 +148,16 @@ export function useBookings() {
   // ─── DELETE booking ───────────────────────────────────────────────────────
   async function deleteBooking(date, slotKey) {
     isLoading.value = true
+
     try {
-      const params = new URLSearchParams({ action: 'delete', date: dateKey(date), slotKey })
+      const params = new URLSearchParams({
+        action: 'delete',
+        date: dateKey(date),   // ✅ FIXED FORMAT
+        slotKey
+      })
+
       await fetch(`${API_URL}?${params.toString()}`)
+
     } catch (err) {
       console.error('Delete error:', err)
     } finally {
