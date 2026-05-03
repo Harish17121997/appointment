@@ -17,6 +17,14 @@
         </svg>
         Walk-in Billing
       </button>
+      <button class="tab-btn" :class="{ 'tab-btn--active': activeTab === 'products' }" @click="activeTab = 'products'; loadProducts()">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+          <line x1="3" y1="6" x2="21" y2="6"/>
+          <path d="M16 10a4 4 0 0 1-8 0"/>
+        </svg>
+        Products
+      </button>
     </div>
 
     <!-- ══════════════ SERVICES MENU TAB ══════════════ -->
@@ -132,7 +140,7 @@
             </button>
           </div>
 
-          <div class="card card--muted">
+          <div class="card">
             <div class="card__title">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
@@ -140,8 +148,87 @@
                 <path d="M16 10a4 4 0 0 1-8 0"/>
               </svg>
               Add Product
+              <button class="refresh-btn" @click="loadProducts" :disabled="productsLoading" title="Refresh products">
+                <svg :class="{ 'spin-icon': productsLoading }" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <polyline points="23,4 23,10 17,10"/>
+                  <polyline points="1,20 1,14 7,14"/>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/>
+                  <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/>
+                </svg>
+              </button>
             </div>
-            <p class="muted-text">Product catalogue coming soon.</p>
+
+            <!-- Product search dropdown -->
+            <div class="form-group" ref="productDropdownRef">
+              <label>Product</label>
+              <div
+                class="product-select"
+                :class="{ 'product-select--open': productDropdownOpen }"
+                @click="openProductDropdown"
+              >
+                <span v-if="newProduct.name" class="product-select__value">{{ newProduct.name }}</span>
+                <span v-else class="product-select__placeholder">
+                  <span v-if="productsLoading">Loading products…</span>
+                  <span v-else-if="productsError" class="product-select__error">{{ productsError }}</span>
+                  <span v-else>Search or pick a product…</span>
+                </span>
+                <svg class="product-select__chevron" :class="{ rotated: productDropdownOpen }"
+                  width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </div>
+
+              <div v-if="productDropdownOpen" class="product-dropdown">
+                <div class="product-dropdown__search-wrap">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                  <input
+                    ref="productSearchInput"
+                    v-model="productSearch"
+                    class="product-dropdown__search"
+                    placeholder="Type to filter…"
+                    @click.stop
+                    @keydown.escape="productDropdownOpen = false"
+                  />
+                  <button v-if="productSearch" type="button" class="product-dropdown__clear-btn" @click.stop="productSearch = ''">×</button>
+                </div>
+                <div class="product-dropdown__list">
+                  <div v-if="filteredProducts.length === 0 && !productsLoading" class="product-dropdown__empty">
+                    <span v-if="productSearch">No products match "{{ productSearch }}"</span>
+                    <span v-else>No products found. Add them in your sheet.</span>
+                  </div>
+                  <button
+                    v-for="p in filteredProducts"
+                    :key="p.name"
+                    type="button"
+                    class="product-dropdown__item"
+                    :class="{ 'product-dropdown__item--selected': newProduct.name === p.name }"
+                    @click.stop="selectProduct(p)"
+                  >
+                    <span class="product-dropdown__item-name">{{ p.name }}</span>
+                    <span class="product-dropdown__item-price">₹{{ Number(p.price).toLocaleString('en-IN') }}</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-row" v-if="newProduct.name">
+              <div class="form-group">
+                <label>Rate (₹)</label>
+                <input v-model.number="newProduct.rate" type="number" class="form-input" />
+              </div>
+              <div class="form-group form-group--sm">
+                <label>Qty</label>
+                <input v-model.number="newProduct.qty" type="number" min="1" class="form-input" />
+              </div>
+            </div>
+            <button class="btn-add-item btn-add-item--product" @click="addProductToBill" :disabled="!newProduct.name">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Add to Bill
+            </button>
           </div>
         </div>
 
@@ -169,11 +256,11 @@
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="(item, i) in bill.items" :key="i" :class="{ 'row--warn': item.needsPriceCheck }">
+                  <tr v-for="(item, i) in bill.items" :key="i" :class="{ 'row--warn': item.needsPriceCheck, 'row--product': item.isProduct }">
                     <td class="td-num">{{ i + 1 }}</td>
                     <td>
                       <div class="item-name">{{ item.serviceName }}</div>
-                      <span class="item-badge">Service</span>
+                      <span class="item-badge" :class="item.isProduct ? 'item-badge--product' : ''">{{ item.isProduct ? 'Product' : 'Service' }}</span>
                     </td>
                     <td>{{ item.staff || '—' }}</td>
                     <td><input v-model.number="item.rate" type="number" class="rate-input" /></td>
@@ -233,6 +320,205 @@
       </div>
     </div>
 
+    <!-- ══════════════ PRODUCTS TAB ══════════════ -->
+    <div v-if="activeTab === 'products'" class="ptab">
+
+      <!-- Top bar -->
+      <div class="ptab__topbar">
+        <div class="ptab__topbar-left">
+          <div class="ptab__title">Product Catalogue</div>
+          <div class="ptab__subtitle">
+            <span class="ptab__count">{{ products.length }} products</span>
+            <span v-if="productsError" class="ptab__err-badge">⚠ {{ productsError }}</span>
+          </div>
+        </div>
+        <div class="ptab__topbar-right">
+          <div class="ptab__search-box">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input v-model="productManageSearch" class="ptab__search-input" placeholder="Search products…" />
+            <button v-if="productManageSearch" class="ptab__search-clear" @click="productManageSearch = ''">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <button class="ptab__btn-refresh" @click="loadProducts" :disabled="productsLoading" title="Refresh">
+            <svg :class="{ 'ptab-spin': productsLoading }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="23,4 23,10 17,10"/><polyline points="1,20 1,14 7,14"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/>
+            </svg>
+          </button>
+          <button class="ptab__btn-add" @click="openAddProduct">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Add Product
+          </button>
+        </div>
+      </div>
+
+      <!-- Add / Edit inline form -->
+      <transition name="pf-slide">
+        <div v-if="productForm.show" class="pf-card">
+          <div class="pf-card__head">
+            <div class="pf-card__label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path v-if="productForm.id" d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path v-if="productForm.id" d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                <line v-if="!productForm.id" x1="12" y1="5" x2="12" y2="19"/><line v-if="!productForm.id" x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              {{ productForm.id ? 'Edit Product' : 'New Product' }}
+            </div>
+            <button class="pf-card__close" @click="closeProductForm">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div class="pf-card__body">
+            <div class="pf-field pf-field--wide">
+              <label class="pf-label">Product Name <span class="pf-req">*</span></label>
+              <input
+                v-model="productForm.name"
+                class="pf-input"
+                :class="{ 'pf-input--err': productForm.nameError }"
+                placeholder="e.g. Loreal Shampoo 400ml"
+                @input="productForm.nameError = ''"
+              />
+              <span v-if="productForm.nameError" class="pf-err-msg">{{ productForm.nameError }}</span>
+            </div>
+            <div class="pf-field">
+              <label class="pf-label">Price (₹) <span class="pf-req">*</span></label>
+              <input v-model.number="productForm.price" type="number" min="0" class="pf-input" placeholder="0" />
+            </div>
+            <div class="pf-field">
+              <label class="pf-label">Category</label>
+              <input v-model="productForm.category" class="pf-input" placeholder="e.g. Hair Care" />
+            </div>
+          </div>
+          <div class="pf-card__foot">
+            <button class="pf-btn pf-btn--ghost" @click="closeProductForm">Cancel</button>
+            <button class="pf-btn pf-btn--save" @click="saveProduct" :disabled="productForm.saving">
+              <svg v-if="productForm.saving" class="ptab-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+              </svg>
+              {{ productForm.saving ? 'Saving…' : (productForm.id ? 'Update Product' : 'Add Product') }}
+            </button>
+          </div>
+        </div>
+      </transition>
+
+      <!-- Loading state -->
+      <div v-if="productsLoading" class="ptab__loading">
+        <svg class="ptab-spin" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 12a9 9 0 1 1-6.219-8.56"/>
+        </svg>
+        Loading products from sheet…
+      </div>
+
+      <!-- Products grid / table -->
+      <template v-else-if="managedProducts.length">
+        <!-- Category group by -->
+        <template v-if="!productManageSearch">
+          <div v-for="group in groupedProducts" :key="group.category" class="ptab__group">
+            <div class="ptab__group-header">
+              <span class="ptab__group-name">{{ group.category || 'Uncategorised' }}</span>
+              <span class="ptab__group-count">{{ group.items.length }}</span>
+            </div>
+            <div class="ptab__cards">
+              <div v-for="p in group.items" :key="p.id" class="pcard">
+                <div class="pcard__name">{{ p.name }}</div>
+                <div class="pcard__bottom">
+                  <span class="pcard__price">₹{{ Number(p.price).toLocaleString('en-IN') }}</span>
+                  <div class="pcard__actions">
+                    <button class="pcard__btn pcard__btn--edit" @click="editProduct(p)" title="Edit">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>
+                    <button class="pcard__btn pcard__btn--del" @click="confirmDeleteProduct(p)" title="Delete">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                        <path d="M10 11v6"/><path d="M14 11v6"/>
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+
+        <!-- Flat list when searching -->
+        <div v-else class="ptab__cards ptab__cards--flat">
+          <div v-for="p in managedProducts" :key="p.id" class="pcard">
+            <div class="pcard__name">{{ p.name }}</div>
+            <div v-if="p.category" class="pcard__cat">{{ p.category }}</div>
+            <div class="pcard__bottom">
+              <span class="pcard__price">₹{{ Number(p.price).toLocaleString('en-IN') }}</span>
+              <div class="pcard__actions">
+                <button class="pcard__btn pcard__btn--edit" @click="editProduct(p)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+                <button class="pcard__btn pcard__btn--del" @click="confirmDeleteProduct(p)">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                    <path d="M10 11v6"/><path d="M14 11v6"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+
+      <!-- Empty -->
+      <div v-else class="ptab__empty">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" opacity="0.25">
+          <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+          <line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>
+        </svg>
+        <p>{{ productManageSearch ? `No products match "${productManageSearch}"` : 'No products yet.' }}</p>
+        <button v-if="!productManageSearch" class="ptab__btn-add" @click="openAddProduct" style="margin-top:4px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Add your first product
+        </button>
+      </div>
+
+      <!-- Delete confirm dialog -->
+      <transition name="modal">
+        <div v-if="productDeleteConfirm.show" class="del-overlay" @click.self="productDeleteConfirm.show = false">
+          <div class="del-dialog">
+            <div class="del-dialog__icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+              </svg>
+            </div>
+            <div class="del-dialog__title">Delete Product?</div>
+            <div class="del-dialog__msg">
+              <strong>{{ productDeleteConfirm.name }}</strong> will be removed from the catalogue. This cannot be undone.
+            </div>
+            <div class="del-dialog__actions">
+              <button class="pf-btn pf-btn--ghost" @click="productDeleteConfirm.show = false">Cancel</button>
+              <button class="pf-btn pf-btn--del" @click="deleteProduct" :disabled="productDeleteConfirm.deleting">
+                {{ productDeleteConfirm.deleting ? 'Deleting…' : 'Delete' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </transition>
+
+    </div>
+
+
     <!-- ══════════════ INVOICE MODAL ══════════════ -->
     <teleport to="body">
       <transition name="modal">
@@ -256,7 +542,7 @@
             <div class="inv-preview" id="invoice-print-area">
               <!-- Salon Header -->
               <div class="inv-salon-header">
-                <div class="inv-salon-logo"><img style="width: 50px; height: 40px;" src="/public/favicon.png" alt="Scintillate Salon" /></div>
+                <div class="inv-salon-logo"><img style="width: 50px; height: 40px;" src="/favicon.png" alt="Scintillate Salon" /></div>
                 <div>
                   <div class="inv-salon-name">Scintillate Unisex Salon</div>
                   <div class="inv-salon-addr">Pune, Maharashtra · +91 98765 43210</div>
@@ -289,7 +575,10 @@
                 <tbody>
                   <tr v-for="(item, i) in invoiceModal.items" :key="i" class="inv-tr">
                     <td class="inv-td inv-td--muted">{{ i + 1 }}</td>
-                    <td class="inv-td inv-td--name">{{ item.serviceName }}</td>
+                    <td class="inv-td inv-td--name">
+                      {{ item.serviceName }}
+                      <span v-if="item.isProduct" class="inv-badge--product">Product</span>
+                    </td>
                     <td class="inv-td inv-td--muted">{{ item.staff || '—' }}</td>
                     <td class="inv-td inv-td--right">{{ item.qty }}</td>
                     <td class="inv-td inv-td--right">₹{{ item.rate.toLocaleString('en-IN') }}</td>
@@ -365,9 +654,12 @@
 </template>
 
 <script setup>
-import { ref, computed, reactive, onMounted } from 'vue'
+import { ref, computed, reactive, onMounted, onUnmounted, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { SERVICE_ALIAS_MAP } from '@/composables/useBookings'
+
+// Define API URL directly in this component
+const API_URL = 'https://script.google.com/macros/s/AKfycbx3lXRJdgP7uHFqU82c7T0kxDPW3HEWUcB3LpyGrGlAKpMFIckpWFzuFLSDuGvfzQzDTQ/exec'
 
 const route = useRoute()
 
@@ -518,6 +810,204 @@ const allServicesFlat = [
 ]
 
 const staffList = ref(['Lucky', 'Shaad', 'Priyanka', 'Surabhi'])
+
+// ── Products ──────────────────────────────────────────────────────────────────
+const products = ref([])
+const productsLoading = ref(false)
+const productsError = ref('')
+const productDropdownOpen = ref(false)
+const productDropdownRef = ref(null)
+const productSearchInput = ref(null)
+const productSearch = ref('')
+const newProduct = reactive({ name: '', rate: 0, qty: 1 })
+
+const filteredProducts = computed(() => {
+  const q = productSearch.value.toLowerCase().trim()
+  if (!q) return products.value
+  return products.value.filter(p => p.name.toLowerCase().includes(q))
+})
+
+async function loadProducts() {
+  productsLoading.value = true
+  productsError.value = ''
+  try {
+    const res = await fetch(`${API_URL}?action=productGet`)
+    const data = await res.json()
+    if (!data.success) throw new Error(data.error || 'Failed')
+    products.value = data.products || []
+  } catch (err) {
+    productsError.value = 'Could not load products'
+    console.error('Product fetch error:', err)
+  } finally {
+    productsLoading.value = false
+  }
+}
+
+async function openProductDropdown() {
+  productDropdownOpen.value = true
+  if (products.value.length === 0 && !productsLoading.value) loadProducts()
+  await nextTick()
+  productSearchInput.value?.focus()
+}
+
+function selectProduct(p) {
+  newProduct.name = p.name
+  newProduct.rate = Number(p.price) || 0
+  newProduct.qty = 1
+  productDropdownOpen.value = false
+  productSearch.value = ''
+}
+
+function addProductToBill() {
+  if (!newProduct.name) return
+  bill.items.push({
+    serviceName: newProduct.name,
+    staff: '',
+    rate: newProduct.rate,
+    qty: newProduct.qty,
+    isProduct: true,
+  })
+  newProduct.name = ''
+  newProduct.rate = 0
+  newProduct.qty = 1
+}
+
+// ── Product Management (Admin) ────────────────────────────────────────────────
+const productManageSearch = ref('')
+
+const managedProducts = computed(() => {
+  const q = productManageSearch.value.toLowerCase().trim()
+  if (!q) return products.value
+  return products.value.filter(p =>
+    p.name.toLowerCase().includes(q) ||
+    (p.category || '').toLowerCase().includes(q)
+  )
+})
+
+const groupedProducts = computed(() => {
+  const groups = {}
+  products.value.forEach(p => {
+    const cat = p.category || ''
+    if (!groups[cat]) groups[cat] = { category: cat, items: [] }
+    groups[cat].items.push(p)
+  })
+  return Object.values(groups).sort((a, b) => {
+    if (!a.category) return 1
+    if (!b.category) return -1
+    return a.category.localeCompare(b.category)
+  })
+})
+
+const productForm = reactive({
+  show: false,
+  id: '',
+  name: '',
+  price: 0,
+  category: '',
+  nameError: '',
+  saving: false,
+})
+
+const productDeleteConfirm = reactive({
+  show: false,
+  id: '',
+  name: '',
+  deleting: false,
+})
+
+function openAddProduct() {
+  productForm.id       = ''
+  productForm.name     = ''
+  productForm.price    = 0
+  productForm.category = ''
+  productForm.nameError = ''
+  productForm.saving   = false
+  productForm.show     = true
+}
+
+function editProduct(p) {
+  productForm.id       = p.id
+  productForm.name     = p.name
+  productForm.price    = Number(p.price) || 0
+  productForm.category = p.category || ''
+  productForm.nameError = ''
+  productForm.saving   = false
+  productForm.show     = true
+}
+
+function closeProductForm() {
+  productForm.show = false
+}
+
+async function saveProduct() {
+  if (!productForm.name.trim()) {
+    productForm.nameError = 'Product name is required'
+    return
+  }
+  productForm.saving = true
+  try {
+    const params = new URLSearchParams({
+      action:   'productSave',
+      id:       productForm.id || String(Date.now()),
+      name:     productForm.name.trim(),
+      price:    productForm.price || 0,
+      category: productForm.category.trim(),
+    })
+    const res  = await fetch(`${API_URL}?${params}`)
+    const data = await res.json()
+    if (!data.success) throw new Error(data.error || 'Save failed')
+    productForm.show = false
+    await loadProducts()
+    showToast(productForm.id ? 'Product updated!' : 'Product added!', 'success')
+  } catch (err) {
+    showToast('Failed to save product', 'error')
+    console.error(err)
+  } finally {
+    productForm.saving = false
+  }
+}
+
+function confirmDeleteProduct(p) {
+  productDeleteConfirm.id       = p.id
+  productDeleteConfirm.name     = p.name
+  productDeleteConfirm.deleting = false
+  productDeleteConfirm.show     = true
+}
+
+async function deleteProduct() {
+  productDeleteConfirm.deleting = true
+  try {
+    const params = new URLSearchParams({
+      action: 'productDelete',
+      id:     productDeleteConfirm.id,
+    })
+    const res  = await fetch(`${API_URL}?${params}`)
+    const data = await res.json()
+    if (!data.success) throw new Error(data.error || 'Delete failed')
+    productDeleteConfirm.show = false
+    await loadProducts()
+    showToast('Product deleted', 'success')
+  } catch (err) {
+    showToast('Failed to delete product', 'error')
+    console.error(err)
+  } finally {
+    productDeleteConfirm.deleting = false
+  }
+}
+
+function handleProductClickOutside(e) {
+  if (productDropdownRef.value && !productDropdownRef.value.contains(e.target)) {
+    productDropdownOpen.value = false
+    productSearch.value = ''
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('mousedown', handleProductClickOutside)
+})
+onUnmounted(() => {
+  document.removeEventListener('mousedown', handleProductClickOutside)
+})
 
 const allCategories = computed(() => ['All', ...allServicesFlat.map(c => c.name)])
 
@@ -752,84 +1242,82 @@ function printInvoice() {
   const area = document.getElementById('invoice-print-area')
   if (!area) return
   const win = window.open('', '_blank', 'width=600,height=700')
-  win.document.write(`
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <title>Invoice ${invoiceModal.invoiceNo}</title>
-      <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1a1a1a; background: white; }
-        .wrap { max-width: 520px; margin: 0 auto; padding: 32px 24px; }
-        .salon-header { display: flex; align-items: center; gap: 14px; padding-bottom: 20px; border-bottom: 2px solid #f0f0f0; margin-bottom: 20px; }
-        .salon-logo { width: 44px; height: 44px; background: #8B6F47; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px; }
-        .salon-name { font-size: 18px; font-weight: 700; color: #1a1a1a; }
-        .salon-addr { font-size: 11px; color: #888; margin-top: 2px; }
-        .inv-meta { margin-left: auto; text-align: right; }
-        .inv-num { font-size: 13px; font-weight: 600; color: #8B6F47; }
-        .inv-date { font-size: 11px; color: #888; margin-top: 2px; }
-        .customer { background: #fafafa; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; }
-        .customer-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.08em; }
-        .customer-name { font-size: 15px; font-weight: 600; margin-top: 3px; }
-        .customer-phone { font-size: 12px; color: #666; margin-top: 2px; }
-        table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px; }
-        th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #999; padding: 8px 6px; border-bottom: 1px solid #eee; text-align: left; }
-        td { padding: 10px 6px; border-bottom: 1px solid #f5f5f5; }
-        .right { text-align: right; }
-        .bold { font-weight: 600; }
-        .muted { color: #888; }
-        .totals { border-top: 2px solid #f0f0f0; padding-top: 14px; }
-        .tot-row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }
-        .tot-grand { font-size: 16px; font-weight: 700; padding-top: 10px; border-top: 1px solid #eee; margin-top: 6px; color: #8B6F47; }
-        .footer { text-align: center; margin-top: 28px; font-size: 12px; color: #aaa; padding-top: 16px; border-top: 1px dashed #eee; }
-        @media print { body { -webkit-print-color-adjust: exact; } }
-      </style>
-    </head>
-    <body>
-    <div class="wrap">
-      <div class="salon-header">
-        <div class="salon-logo">✂</div>
-        <div>
-          <div class="salon-name">Scintillate Unisex Salon</div>
-          <div class="salon-addr">Pune, Maharashtra</div>
-        </div>
-        <div class="inv-meta">
-          <div class="inv-num">${invoiceModal.invoiceNo}</div>
-          <div class="inv-date">${invoiceModal.dateStr}</div>
-        </div>
-      </div>
-      ${invoiceModal.customerName ? `
-      <div class="customer">
-        <div class="customer-label">Bill To</div>
-        <div class="customer-name">${invoiceModal.customerName}</div>
-        ${invoiceModal.customerPhone ? `<div class="customer-phone">📞 ${invoiceModal.customerPhone}</div>` : ''}
-      </div>` : ''}
-      <table>
-        <thead><tr>
-          <th>#</th><th>Service</th><th>Staff</th><th class="right">Qty</th><th class="right">Rate</th><th class="right">Amount</th>
-        </tr></thead>
-        <tbody>
-          ${invoiceModal.items.map((item, i) => `
-          <tr>
-            <td class="muted">${i+1}</td>
-            <td><strong>${item.serviceName}</strong></td>
-            <td class="muted">${item.staff || '—'}</td>
-            <td class="right">${item.qty}</td>
-            <td class="right">₹${item.rate.toLocaleString('en-IN')}</td>
-            <td class="right bold">₹${(item.rate * item.qty).toLocaleString('en-IN')}</td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-      <div class="totals">
-        <div class="tot-row"><span>Subtotal</span><span>₹${invoiceModal.subtotal.toLocaleString('en-IN')}</span></div>
-        ${invoiceModal.discount > 0 ? `<div class="tot-row"><span>Discount${invoiceModal.discountReason ? ` (${invoiceModal.discountReason})` : ''}</span><span>− ₹${invoiceModal.discount.toLocaleString('en-IN')}</span></div>` : ''}
-        <div class="tot-row tot-grand"><span>Total</span><span>₹${invoiceModal.grandTotal.toLocaleString('en-IN')}</span></div>
-      </div>
-      <div class="footer">Thank you for visiting Scintillate! 💫 See you again soon.</div>
-    </div>
-    </body></html>
-  `)
+  const m = invoiceModal
+
+  const rows = m.items.map((item, i) => [
+    '<tr>',
+    `<td class="muted">${i+1}</td>`,
+    `<td><strong>${item.serviceName}${item.isProduct ? ' [Product]' : ''}</strong></td>`,
+    `<td class="muted">${item.staff || '—'}</td>`,
+    `<td class="right">${item.qty}</td>`,
+    `<td class="right">₹${item.rate.toLocaleString('en-IN')}</td>`,
+    `<td class="right bold">₹${(item.rate * item.qty).toLocaleString('en-IN')}</td>`,
+    '</tr>'
+  ].join('')).join('')
+
+  const discountRow = m.discount > 0
+    ? `<div class="tot-row"><span>Discount${m.discountReason ? ' (' + m.discountReason + ')' : ''}</span><span>− ₹${m.discount.toLocaleString('en-IN')}</span></div>`
+    : ''
+
+  const customerBlock = m.customerName
+    ? '<div class="customer">'
+      + '<div class="customer-label">Bill To</div>'
+      + `<div class="customer-name">${m.customerName}</div>`
+      + (m.customerPhone ? `<div class="customer-phone">📞 ${m.customerPhone}</div>` : '')
+      + '</div>'
+    : ''
+
+  const css = [
+    '* { box-sizing: border-box; margin: 0; padding: 0; }',
+    "body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #1a1a1a; background: white; }",
+    '.wrap { max-width: 520px; margin: 0 auto; padding: 32px 24px; }',
+    '.salon-header { display: flex; align-items: center; gap: 14px; padding-bottom: 20px; border-bottom: 2px solid #f0f0f0; margin-bottom: 20px; }',
+    '.salon-logo { width: 44px; height: 44px; background: #8B6F47; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px; }',
+    '.salon-name { font-size: 18px; font-weight: 700; }',
+    '.salon-addr { font-size: 11px; color: #888; margin-top: 2px; }',
+    '.inv-meta { margin-left: auto; text-align: right; }',
+    '.inv-num { font-size: 13px; font-weight: 600; color: #8B6F47; }',
+    '.inv-date { font-size: 11px; color: #888; margin-top: 2px; }',
+    '.customer { background: #fafafa; border-radius: 8px; padding: 12px 16px; margin-bottom: 20px; }',
+    '.customer-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 0.08em; }',
+    '.customer-name { font-size: 15px; font-weight: 600; margin-top: 3px; }',
+    '.customer-phone { font-size: 12px; color: #666; margin-top: 2px; }',
+    'table { width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 20px; }',
+    'th { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #999; padding: 8px 6px; border-bottom: 1px solid #eee; text-align: left; }',
+    'td { padding: 10px 6px; border-bottom: 1px solid #f5f5f5; }',
+    '.right { text-align: right; } .bold { font-weight: 600; } .muted { color: #888; }',
+    '.totals { border-top: 2px solid #f0f0f0; padding-top: 14px; }',
+    '.tot-row { display: flex; justify-content: space-between; font-size: 13px; padding: 4px 0; }',
+    '.tot-grand { font-size: 16px; font-weight: 700; padding-top: 10px; border-top: 1px solid #eee; margin-top: 6px; color: #8B6F47; }',
+    '.footer { text-align: center; margin-top: 28px; font-size: 12px; color: #aaa; padding-top: 16px; border-top: 1px dashed #eee; }',
+    '@media print { body { -webkit-print-color-adjust: exact; } }'
+  ].join(' ')
+
+  const html = '<!DOCTYPE html>'
+    + '<html><head><meta charset="utf-8">'
+    + `<title>Invoice ${m.invoiceNo}</title>`
+    + `<style>${css}</style>`
+    + '</head><body><div class="wrap">'
+    + '<div class="salon-header">'
+    + '<div class="salon-logo">✂</div>'
+    + '<div><div class="salon-name">Scintillate Unisex Salon</div><div class="salon-addr">Pune, Maharashtra</div></div>'
+    + '<div class="inv-meta">'
+    + `<div class="inv-num">${m.invoiceNo}</div>`
+    + `<div class="inv-date">${m.dateStr}</div>`
+    + '</div></div>'
+    + customerBlock
+    + '<table><thead><tr>'
+    + '<th>#</th><th>Service</th><th>Staff</th><th class="right">Qty</th><th class="right">Rate</th><th class="right">Amount</th>'
+    + '</tr></thead><tbody>' + rows + '</tbody></table>'
+    + '<div class="totals">'
+    + `<div class="tot-row"><span>Subtotal</span><span>₹${m.subtotal.toLocaleString('en-IN')}</span></div>`
+    + discountRow
+    + `<div class="tot-row tot-grand"><span>Total</span><span>₹${m.grandTotal.toLocaleString('en-IN')}</span></div>`
+    + '</div>'
+    + '<div class="footer">Thank you for visiting Scintillate! 💫 See you again soon.</div>'
+    + '</div></body></html>'
+
+  win.document.write(html)
   win.document.close()
   win.focus()
   setTimeout(() => win.print(), 500)
@@ -985,7 +1473,7 @@ onMounted(() => {
 
 /* ── Form Elements ── */
 .form-row { display: flex; gap: 10px; }
-.form-group { display: flex; flex-direction: column; gap: 5px; flex: 1; }
+.form-group { display: flex; flex-direction: column; gap: 5px; flex: 1; position: relative; }
 .form-group--sm { max-width: 72px; }
 .form-group label { font-size: 11.5px; color: var(--color-text-muted, #666); font-weight: 500; }
 .form-input, .form-select {
@@ -1277,7 +1765,351 @@ onMounted(() => {
 .toast-enter-active, .toast-leave-active { transition: all 0.25s; }
 .toast-enter-from, .toast-leave-to { opacity: 0; transform: translateY(10px); }
 
-/* Modal transition */
-.modal-enter-active, .modal-leave-active { transition: opacity 0.2s, transform 0.2s; }
-.modal-enter-from, .modal-leave-to { opacity: 0; transform: scale(0.97) translateY(8px); }
+/* ── Product dropdown ── */
+.card__title { display: flex; align-items: center; gap: 7px; }
+.refresh-btn {
+  margin-left: auto; background: none; border: none; cursor: pointer;
+  color: var(--color-text-muted, #888); display: flex; align-items: center;
+  padding: 2px; border-radius: 4px; transition: color 0.15s;
+}
+.refresh-btn:hover:not(:disabled) { color: var(--color-accent, #8B6F47); }
+.refresh-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.spin-icon { animation: spin 0.8s linear infinite; }
+
+.product-select {
+  position: relative;
+  display: flex; align-items: center;
+  min-height: 38px; padding: 8px 34px 8px 12px;
+  border: 1px solid var(--color-border, #e0e0e0);
+  border-radius: 8px; cursor: pointer;
+  background: var(--color-surface, #fff);
+  font-size: 14px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.product-select:hover { border-color: var(--color-accent, #8B6F47); }
+.product-select--open { border-color: var(--color-accent, #8B6F47); box-shadow: 0 0 0 3px rgba(139,111,71,0.1); }
+.product-select__value { color: var(--color-text, #1a1a1a); }
+.product-select__placeholder { color: var(--color-text-muted, #aaa); font-size: 13px; }
+.product-select__error { color: #c0392b; }
+.product-select__chevron {
+  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+  color: var(--color-text-muted, #aaa); transition: transform 0.18s; pointer-events: none;
+}
+.product-select__chevron.rotated { transform: translateY(-50%) rotate(180deg); }
+
+.product-dropdown {
+  position: absolute; z-index: 200;
+  left: 0; right: 0; top: calc(100% + 4px);
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #e0e0e0);
+  border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+  overflow: hidden;
+}
+.product-dropdown__search-wrap {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-bottom: 1px solid var(--color-border, #f0f0f0);
+  background: var(--color-surface-2, #fafafa); color: var(--color-text-muted, #aaa);
+}
+.product-dropdown__search {
+  flex: 1; border: none; background: none; outline: none;
+  font-size: 13px; color: var(--color-text, #1a1a1a);
+}
+.product-dropdown__search::placeholder { color: var(--color-text-muted, #aaa); }
+.product-dropdown__clear-btn {
+  background: none; border: none; cursor: pointer;
+  font-size: 16px; color: var(--color-text-muted, #aaa); line-height: 1; padding: 0;
+}
+.product-dropdown__clear-btn:hover { color: var(--color-text, #1a1a1a); }
+.product-dropdown__list { max-height: 200px; overflow-y: auto; }
+.product-dropdown__empty {
+  padding: 16px 14px; font-size: 13px;
+  color: var(--color-text-muted, #aaa); text-align: center;
+}
+.product-dropdown__item {
+  width: 100%; display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 14px; background: none; border: none; cursor: pointer;
+  font-size: 13px; color: var(--color-text, #1a1a1a);
+  transition: background 0.12s;
+}
+.product-dropdown__item:hover { background: var(--color-surface-2, #f7f7f7); }
+.product-dropdown__item--selected { background: var(--color-accent-light, #f5ede4); color: var(--color-accent, #8B6F47); font-weight: 500; }
+.product-dropdown__item-name { flex: 1; text-align: left; }
+.product-dropdown__item-price { font-weight: 600; color: var(--color-accent, #8B6F47); margin-left: 12px; flex-shrink: 0; }
+
+.btn-add-item--product {
+  background: var(--color-surface-2, #f7f7f7);
+  border-color: var(--color-border, #e0e0e0);
+  color: var(--color-text, #333);
+}
+.btn-add-item--product:hover:not(:disabled) { background: #eee; }
+
+/* Product row & badge in invoice table */
+.row--product td { background: #f0faf4 !important; }
+.item-badge--product { background: #d1fae5; color: #065f46; border-color: #a7f3d0; }
+.inv-badge--product {
+  display: inline-block; margin-left: 6px;
+  padding: 1px 6px; border-radius: 4px;
+  font-size: 10px; font-weight: 600;
+  background: #d1fae5; color: #065f46;
+  vertical-align: middle;
+}
+
+/* ══════════════ PRODUCTS TAB ══════════════ */
+/* ══════════════ PRODUCTS TAB ══════════════ */
+.ptab { display: flex; flex-direction: column; gap: 20px; }
+
+/* Top bar */
+.ptab__topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: 12px;
+}
+.ptab__title {
+  font-size: 18px; font-weight: 600;
+  color: var(--color-text, #1a1a1a);
+  font-family: var(--font-display, serif);
+}
+.ptab__subtitle { display: flex; align-items: center; gap: 8px; margin-top: 2px; }
+.ptab__count {
+  font-size: 12px; color: var(--color-text-muted, #999);
+  background: var(--color-surface-2, #f5f5f5);
+  padding: 2px 10px; border-radius: 99px;
+}
+.ptab__err-badge { font-size: 12px; color: #c0392b; }
+.ptab__topbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* Search inside topbar */
+.ptab__search-box {
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 12px;
+  border: 1px solid var(--color-border, #e0e0e0);
+  border-radius: 8px;
+  background: var(--color-surface, #fff);
+  min-width: 200px;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.ptab__search-box:focus-within {
+  border-color: var(--color-accent, #8B6F47);
+  box-shadow: 0 0 0 3px rgba(139,111,71,0.10);
+}
+.ptab__search-input {
+  border: none; outline: none; background: none;
+  font-size: 13.5px; color: var(--color-text, #1a1a1a); flex: 1; min-width: 0;
+}
+.ptab__search-input::placeholder { color: var(--color-text-light, #c0b8ae); }
+.ptab__search-clear {
+  background: none; border: none; cursor: pointer; padding: 0;
+  color: var(--color-text-muted, #aaa); display: flex; align-items: center;
+  transition: color 0.15s;
+}
+.ptab__search-clear:hover { color: var(--color-text, #1a1a1a); }
+
+/* Buttons */
+.ptab__btn-refresh {
+  width: 36px; height: 36px; border-radius: 8px;
+  border: 1px solid var(--color-border, #e0e0e0);
+  background: var(--color-surface, #fff);
+  color: var(--color-text-muted, #888);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: background 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.ptab__btn-refresh:hover:not(:disabled) {
+  border-color: var(--color-accent, #8B6F47);
+  color: var(--color-accent, #8B6F47);
+}
+.ptab__btn-refresh:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.ptab__btn-add {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 0 18px; height: 36px; border-radius: 8px; border: none;
+  background: var(--color-accent, #8B6F47); color: white;
+  font-size: 13.5px; font-weight: 500; cursor: pointer;
+  transition: opacity 0.15s; white-space: nowrap;
+}
+.ptab__btn-add:hover { opacity: 0.88; }
+
+/* Loading */
+.ptab__loading {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 60px 20px;
+  font-size: 14px; color: var(--color-text-muted, #888);
+}
+
+/* Empty */
+.ptab__empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; padding: 60px 20px;
+  font-size: 14px; color: var(--color-text-muted, #888); text-align: center;
+}
+
+/* ── Add/Edit Form Card ── */
+.pf-card {
+  background: var(--color-surface, #fff);
+  border: 1.5px solid var(--color-accent, #8B6F47);
+  border-radius: 14px; overflow: hidden;
+  box-shadow: 0 4px 24px rgba(139,111,71,0.10);
+}
+.pf-card__head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px;
+  background: linear-gradient(135deg, #faf8f5 0%, #f5ede4 100%);
+  border-bottom: 1px solid #e8ddd2;
+}
+.pf-card__label {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 14px; font-weight: 600;
+  color: var(--color-accent, #8B6F47);
+}
+.pf-card__close {
+  width: 28px; height: 28px; border-radius: 6px;
+  border: 1px solid rgba(139,111,71,0.25);
+  background: rgba(255,255,255,0.6); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--color-accent, #8B6F47); transition: background 0.15s;
+}
+.pf-card__close:hover { background: rgba(255,255,255,0.9); }
+
+.pf-card__body {
+  padding: 18px 20px; display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-start;
+}
+.pf-field { display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 130px; }
+.pf-field--wide { flex: 2.5; min-width: 220px; }
+.pf-label { font-size: 11.5px; font-weight: 600; color: var(--color-text-muted, #777); text-transform: uppercase; letter-spacing: 0.04em; }
+.pf-req { color: var(--color-danger, #e53e3e); }
+.pf-input {
+  padding: 9px 12px;
+  border: 1.5px solid var(--color-border, #e0e0e0);
+  border-radius: 8px; font-size: 13.5px;
+  background: var(--color-surface, #fff);
+  color: var(--color-text, #1a1a1a); outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.pf-input:focus { border-color: var(--color-accent, #8B6F47); box-shadow: 0 0 0 3px rgba(139,111,71,0.10); }
+.pf-input--err { border-color: var(--color-danger, #e53e3e) !important; }
+.pf-err-msg { font-size: 11px; color: var(--color-danger, #e53e3e); }
+
+.pf-card__foot {
+  display: flex; justify-content: flex-end; gap: 8px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--color-border, #f0f0f0);
+  background: var(--color-surface-2, #fafafa);
+}
+.pf-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 9px 20px; border-radius: 8px; font-size: 13px;
+  cursor: pointer; border: 1px solid var(--color-border, #e0e0e0);
+  background: none; color: var(--color-text-muted, #666);
+  transition: background 0.15s; white-space: nowrap;
+}
+.pf-btn:hover:not(:disabled) { background: var(--color-surface-2, #f5f5f5); }
+.pf-btn--ghost { color: var(--color-text-muted, #666); }
+.pf-btn--save {
+  background: var(--color-accent, #8B6F47); color: white;
+  border-color: var(--color-accent, #8B6F47); font-weight: 500;
+}
+.pf-btn--save:hover:not(:disabled) { opacity: 0.88; }
+.pf-btn--del {
+  background: #e53e3e; color: white; border-color: #e53e3e; font-weight: 500;
+}
+.pf-btn--del:hover:not(:disabled) { opacity: 0.88; }
+.pf-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ── Category groups ── */
+.ptab__group { margin-bottom: 8px; }
+.ptab__group-header {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 10px; padding-bottom: 6px;
+  border-bottom: 1.5px solid var(--color-border, #ece8e2);
+}
+.ptab__group-name {
+  font-size: 13px; font-weight: 600;
+  color: var(--color-accent, #8B6F47);
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.ptab__group-count {
+  font-size: 11px; background: var(--color-accent-light, #f5ede4);
+  color: var(--color-accent, #8B6F47);
+  padding: 1px 8px; border-radius: 99px;
+}
+
+/* ── Product cards grid ── */
+.ptab__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+.ptab__cards--flat { margin-top: 4px; }
+
+.pcard {
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #e8e8e8);
+  border-radius: 10px; padding: 14px;
+  display: flex; flex-direction: column; gap: 8px;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.12s;
+}
+.pcard:hover {
+  border-color: var(--color-accent, #8B6F47);
+  box-shadow: 0 2px 14px rgba(139,111,71,0.09);
+  transform: translateY(-1px);
+}
+.pcard__name {
+  font-size: 13px; font-weight: 500;
+  color: var(--color-text, #1a1a1a); line-height: 1.4;
+  flex: 1;
+}
+.pcard__cat {
+  font-size: 11px; color: var(--color-text-muted, #999);
+}
+.pcard__bottom {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+}
+.pcard__price {
+  font-size: 15px; font-weight: 700;
+  color: var(--color-accent, #8B6F47);
+}
+.pcard__actions { display: flex; gap: 4px; }
+.pcard__btn {
+  width: 26px; height: 26px; border-radius: 6px;
+  border: 1px solid var(--color-border, #e8e8e8);
+  background: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+.pcard__btn--edit { color: var(--color-accent, #8B6F47); }
+.pcard__btn--edit:hover { background: var(--color-accent-light, #f5ede4); border-color: var(--color-accent, #8B6F47); }
+.pcard__btn--del { color: var(--color-danger, #e53e3e); }
+.pcard__btn--del:hover { background: #fff5f5; border-color: var(--color-danger, #e53e3e); }
+
+/* ── Delete confirm dialog ── */
+.del-overlay {
+  position: fixed; inset: 0; background: rgba(10,8,6,0.48);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1200; padding: 16px;
+}
+.del-dialog {
+  background: var(--color-surface, #fff);
+  border-radius: 16px; border: 1px solid var(--color-border, #e0e0e0);
+  width: 340px; max-width: 100%; padding: 28px 24px 24px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.18);
+}
+.del-dialog__icon {
+  width: 52px; height: 52px; border-radius: 50%;
+  background: #fff5f5; border: 1.5px solid #fecaca;
+  display: flex; align-items: center; justify-content: center;
+  margin: 0 auto 14px; color: var(--color-danger, #e53e3e);
+}
+.del-dialog__title { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+.del-dialog__msg { font-size: 13px; color: var(--color-text-muted, #666); margin-bottom: 22px; line-height: 1.5; }
+.del-dialog__actions { display: flex; gap: 8px; justify-content: center; }
+
+/* Form slide animation */
+.pf-slide-enter-active, .pf-slide-leave-active { transition: opacity 0.18s, transform 0.18s; }
+.pf-slide-enter-from, .pf-slide-leave-to { opacity: 0; transform: translateY(-10px); }
+
+/* Spinner */
+.ptab-spin { animation: ptab-spin-kf 0.8s linear infinite; display: inline-block; flex-shrink: 0; }
+@keyframes ptab-spin-kf { to { transform: rotate(360deg); } }
+
 </style>
