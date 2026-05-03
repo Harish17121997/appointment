@@ -1,9 +1,12 @@
 <template>
-  <div class="app-shell">
+  <div v-if="isLoginPage" class="login-wrapper">
+    <router-view />
+  </div>
+  <div v-else class="app-shell">
     <!-- Sidebar -->
     <aside class="sidebar" :class="{ 'sidebar--collapsed': sidebarCollapsed }">
       <div class="sidebar__brand">
-        <div class="brand-icon"><img style="width: 50px; height: 40px;" src="/public/favicon.png" alt="Scintillate Salon" /></div>
+        <div class="brand-icon"><img style="width: 50px; height: 40px;" src="/favicon.png" alt="Scintillate Salon" /></div>
         <transition name="fade">
           <div v-if="!sidebarCollapsed" class="brand-text">
             <span class="brand-name">Scintillate</span>
@@ -69,18 +72,32 @@
 
       <div class="sidebar__footer">
         <!-- Owner logout button (if authed) -->
+        <!-- Owner mode off (owner only) -->
         <button
           v-if="isOwner && !sidebarCollapsed"
           class="owner-logout"
-          @click="logout"
-          title="Logout owner"
+          @click="ownerLogout"
+          title="Exit owner mode"
         >
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
             <polyline points="16 17 21 12 16 7"/>
             <line x1="21" y1="12" x2="9" y2="12"/>
           </svg>
-          Owner logout
+          Owner mode off
+        </button>
+        <!-- Lock app (visible to everyone) -->
+        <button
+          v-if="!sidebarCollapsed"
+          class="lock-btn"
+          @click="lockApp"
+          title="Lock app"
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="11" width="18" height="11" rx="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          Lock app
         </button>
         <button class="collapse-btn" @click="sidebarCollapsed = !sidebarCollapsed" :title="sidebarCollapsed ? 'Expand' : 'Collapse'">
           <span v-html="sidebarCollapsed ? '&#9654;' : '&#9664;'"></span>
@@ -123,11 +140,28 @@
 
 <script setup>
 import { ref, computed } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
+import { useSession } from '@/composables/useSession'
 
-const route = useRoute()
-const { isOwner, logout } = useAuth()
+const route  = useRoute()
+const router = useRouter()
+
+// Match any route that should show ONLY the login page (no sidebar/shell)
+const isLoginPage = computed(() =>
+  route.path === '/login' ||
+  route.path === '/' && !route.name ||
+  route.name === 'Login' ||
+  route.name === 'login'
+)
+const { isOwner, logout: ownerLogout } = useAuth()
+const { logout: sessionLogout } = useSession()
+
+function lockApp() {
+  ownerLogout()     // clear owner mode
+  sessionLogout()   // clear 7-day session
+  router.push('/login')
+}
 const sidebarCollapsed = ref(false)
 
 const menuItems = [
@@ -295,7 +329,7 @@ const todayDisplay = computed(() =>
   background: #FFF3CD; padding: 4px 12px; border-radius: 99px;
 }
 
-.page-content { flex: 1; overflow-y: auto; padding: 28px; }
+.page-content { flex: 1; overflow-y: auto; padding: 08px; }
 
 /* ── Transitions ── */
 .fade-enter-active, .fade-leave-active { transition: opacity 0.15s; }
@@ -311,5 +345,22 @@ const todayDisplay = computed(() =>
   .main-area { width: 100%; }
   .topbar { padding: 0 16px; }
   .page-content { padding: 16px; }
+}
+/* ── Login wrapper (no sidebar shell) ── */
+.login-wrapper { width: 100%; height: 100vh; }
+
+/* ── Lock button ── */
+.lock-btn {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--color-text-muted);
+  background: none; border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm); padding: 4px 9px;
+  cursor: pointer; transition: background var(--transition), color var(--transition), border-color var(--transition);
+  white-space: nowrap;
+}
+.lock-btn:hover {
+  background: var(--color-accent-light, #f5ede4);
+  color: var(--color-accent, #8B6F47);
+  border-color: var(--color-accent, #8B6F47);
 }
 </style>
