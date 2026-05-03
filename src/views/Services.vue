@@ -256,7 +256,7 @@
             <div class="inv-preview" id="invoice-print-area">
               <!-- Salon Header -->
               <div class="inv-salon-header">
-                <!-- <div class="inv-salon-logo"><img src="@/assets/logo.png" alt="logo" /></div> -->
+                <div class="inv-salon-logo"><img style="width: 50px; height: 40px;" src="/public/favicon.png" alt="Scintillate Salon" /></div>
                 <div>
                   <div class="inv-salon-name">Scintillate Unisex Salon</div>
                   <div class="inv-salon-addr">Pune, Maharashtra · +91 98765 43210</div>

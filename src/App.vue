@@ -3,7 +3,7 @@
     <!-- Sidebar -->
     <aside class="sidebar" :class="{ 'sidebar--collapsed': sidebarCollapsed }">
       <div class="sidebar__brand">
-        <div class="brand-icon">✂</div>
+        <div class="brand-icon"><img style="width: 50px; height: 40px;" src="/public/favicon.png" alt="Scintillate Salon" /></div>
         <transition name="fade">
           <div v-if="!sidebarCollapsed" class="brand-text">
             <span class="brand-name">Scintillate</span>
