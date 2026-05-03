@@ -93,65 +93,18 @@
               </div>
             </div>
 
-            <div class="form-group" ref="serviceDropdownRef">
+            <div class="form-group">
               <label class="form-label">Services <span class="required">*</span></label>
-
-              <!-- Trigger / selected pills display -->
-              <div
-                class="service-select"
-                :class="{ 'service-select--error': errors.services, 'service-select--open': dropdownOpen }"
-                @click="openDropdown"
-              >
-                <div class="service-select__pills" v-if="form.services.length">
-                  <span
-                    v-for="svc in form.services"
-                    :key="svc"
-                    class="pill"
-                  >
-                    {{ svc }}
-                    <button type="button" class="pill__remove" @click.stop="toggleService(svc)">×</button>
-                  </span>
-                </div>
-                <span v-else class="service-select__placeholder">Search and select services…</span>
-                <svg class="service-select__chevron" :class="{ 'rotated': dropdownOpen }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+              <div class="services-grid">
+                <button
+                  v-for="svc in availableServices"
+                  :key="svc"
+                  type="button"
+                  class="service-tag"
+                  :class="{ 'service-tag--selected': form.services.includes(svc) }"
+                  @click="toggleService(svc)"
+                >{{ svc }}</button>
               </div>
-
-              <!-- Dropdown panel -->
-              <div v-if="dropdownOpen" class="service-dropdown">
-                <div class="service-dropdown__search-wrap">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                  <input
-                    ref="searchInput"
-                    v-model="serviceSearch"
-                    class="service-dropdown__search"
-                    placeholder="Type to filter…"
-                    @click.stop
-                    @keydown.escape="dropdownOpen = false"
-                  />
-                  <button v-if="serviceSearch" type="button" class="service-dropdown__clear" @click.stop="serviceSearch = ''">×</button>
-                </div>
-                <div class="service-dropdown__list">
-                  <div v-if="filteredServices.length === 0" class="service-dropdown__empty">No services match "{{ serviceSearch }}"</div>
-                  <button
-                    v-for="svc in filteredServices"
-                    :key="svc"
-                    type="button"
-                    class="service-dropdown__item"
-                    :class="{ 'service-dropdown__item--selected': form.services.includes(svc) }"
-                    @click.stop="toggleService(svc)"
-                  >
-                    <span class="service-dropdown__check">
-                      <svg v-if="form.services.includes(svc)" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
-                    </span>
-                    {{ svc }}
-                  </button>
-                </div>
-                <div v-if="form.services.length" class="service-dropdown__footer">
-                  {{ form.services.length }} selected
-                  <button type="button" class="service-dropdown__clear-all" @click.stop="form.services = []">Clear all</button>
-                </div>
-              </div>
-
               <span v-if="errors.services" class="form-error">{{ errors.services }}</span>
             </div>
 
@@ -187,7 +140,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { HAIR_SERVICES, BEAUTY_SERVICES } from '@/composables/useBookings'
 import { useWhatsApp } from '@/composables/useWhatsApp'
 
@@ -208,38 +161,12 @@ const emit = defineEmits(['close', 'submit', 'delete', 'go-to-billing'])
 const { sendReminder: wpReminder } = useWhatsApp()
 
 const nameInput = ref(null)
-const searchInput = ref(null)
-const serviceDropdownRef = ref(null)
-const dropdownOpen = ref(false)
-const serviceSearch = ref('')
 const form = ref({ name: '', mobile: '', services: [], notes: '', scheduleReminder: true })
 const errors = ref({ name: '', mobile: '', services: '' })
 
 const availableServices = computed(() =>
   props.chairType === 'hair' ? HAIR_SERVICES : BEAUTY_SERVICES
 )
-
-const filteredServices = computed(() => {
-  const q = serviceSearch.value.toLowerCase().trim()
-  if (!q) return availableServices.value
-  return availableServices.value.filter(s => s.toLowerCase().includes(q))
-})
-
-async function openDropdown() {
-  dropdownOpen.value = true
-  await nextTick()
-  searchInput.value?.focus()
-}
-
-function handleClickOutside(e) {
-  if (serviceDropdownRef.value && !serviceDropdownRef.value.contains(e.target)) {
-    dropdownOpen.value = false
-    serviceSearch.value = ''
-  }
-}
-
-onMounted(() => document.addEventListener('mousedown', handleClickOutside))
-onUnmounted(() => document.removeEventListener('mousedown', handleClickOutside))
 
 const slotLabel = computed(() => {
   if (!props.time) return ''
@@ -253,8 +180,6 @@ watch(() => props.show, async (val) => {
   if (val && props.mode === 'book') {
     form.value = { name: '', mobile: '', services: [], notes: '', scheduleReminder: true }
     errors.value = { name: '', mobile: '', services: '' }
-    dropdownOpen.value = false
-    serviceSearch.value = ''
     await nextTick()
     nameInput.value?.focus()
   }
@@ -338,7 +263,7 @@ function goToBilling() {
 
 /* form */
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-.form-group { display: flex; flex-direction: column; gap: 6px; position: relative; }
+.form-group { display: flex; flex-direction: column; gap: 6px; }
 .form-label { font-size: 12px; font-weight: 500; color: var(--color-text-muted); }
 .required { color: var(--color-danger); }
 .form-input {
@@ -355,112 +280,16 @@ function goToBilling() {
 .form-input--error { border-color: var(--color-danger); }
 .form-error { font-size: 11px; color: var(--color-danger); }
 
-/* service multiselect */
-.service-select {
-  position: relative;
-  min-height: 42px;
-  padding: 6px 36px 6px 10px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  background: var(--color-surface);
-  cursor: pointer;
-  display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
-  transition: border-color var(--transition), box-shadow var(--transition);
+/* services */
+.services-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
+.service-tag {
+  padding: 7px 10px; border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm); font-size: 12px; background: none;
+  color: var(--color-text-muted); cursor: pointer; text-align: center;
+  transition: all var(--transition);
 }
-.service-select:hover { border-color: var(--color-accent); }
-.service-select--open { border-color: var(--color-accent); box-shadow: 0 0 0 3px rgba(139,111,71,0.12); }
-.service-select--error { border-color: var(--color-danger); }
-.service-select__placeholder { font-size: 14px; color: var(--color-text-muted); user-select: none; }
-.service-select__chevron {
-  position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
-  color: var(--color-text-muted); transition: transform 0.2s; pointer-events: none;
-}
-.service-select__chevron.rotated { transform: translateY(-50%) rotate(180deg); }
-.pill {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 3px 8px; border-radius: 99px;
-  background: var(--color-accent-light); color: var(--color-accent);
-  font-size: 12px; font-weight: 500; max-width: 200px; overflow: hidden;
-  white-space: nowrap; text-overflow: ellipsis;
-}
-.pill__remove {
-  background: none; border: none; cursor: pointer;
-  color: var(--color-accent); font-size: 15px; line-height: 1;
-  padding: 0; margin-left: 1px; flex-shrink: 0;
-  opacity: 0.7;
-}
-.pill__remove:hover { opacity: 1; }
-
-.service-dropdown {
-  position: absolute; z-index: 200;
-  left: 0; right: 0; top: calc(100% + 4px);
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-}
-.service-dropdown__search-wrap {
-  display: flex; align-items: center; gap: 8px;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--color-border);
-  background: var(--color-surface-2);
-  color: var(--color-text-muted);
-}
-.service-dropdown__search {
-  flex: 1; border: none; background: none;
-  font-size: 13px; color: var(--color-text); outline: none;
-}
-.service-dropdown__search::placeholder { color: var(--color-text-muted); }
-.service-dropdown__clear {
-  background: none; border: none; cursor: pointer;
-  color: var(--color-text-muted); font-size: 16px; line-height: 1; padding: 0;
-}
-.service-dropdown__clear:hover { color: var(--color-text); }
-.service-dropdown__list {
-  max-height: 220px; overflow-y: auto;
-  overscroll-behavior: contain;
-}
-.service-dropdown__empty {
-  padding: 16px 14px; font-size: 13px;
-  color: var(--color-text-muted); text-align: center;
-}
-.service-dropdown__item {
-  width: 100%; text-align: left;
-  display: flex; align-items: center; gap: 10px;
-  padding: 9px 14px; font-size: 13px;
-  background: none; border: none; cursor: pointer;
-  color: var(--color-text);
-  transition: background var(--transition);
-}
-.service-dropdown__item:hover { background: var(--color-surface-2); }
-.service-dropdown__item--selected { background: var(--color-accent-light); color: var(--color-accent); font-weight: 500; }
-.service-dropdown__item--selected:hover { background: var(--color-accent-light); filter: brightness(0.97); }
-.service-dropdown__check {
-  width: 16px; height: 16px; flex-shrink: 0;
-  display: flex; align-items: center; justify-content: center;
-  border: 1.5px solid var(--color-border); border-radius: 4px;
-  background: var(--color-surface);
-  color: var(--color-accent);
-  transition: border-color var(--transition);
-}
-.service-dropdown__item--selected .service-dropdown__check {
-  border-color: var(--color-accent);
-  background: var(--color-accent-light);
-}
-.service-dropdown__footer {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 8px 14px; font-size: 12px;
-  color: var(--color-text-muted);
-  border-top: 1px solid var(--color-border);
-  background: var(--color-surface-2);
-}
-.service-dropdown__clear-all {
-  background: none; border: none; cursor: pointer;
-  font-size: 12px; color: var(--color-danger);
-  padding: 0;
-}
-.service-dropdown__clear-all:hover { text-decoration: underline; }
+.service-tag:hover { border-color: var(--color-accent); color: var(--color-accent); background: var(--color-accent-light); }
+.service-tag--selected { border-color: var(--color-accent); background: var(--color-accent-light); color: var(--color-accent); font-weight: 500; }
 
 /* reminder toggle */
 .reminder-toggle {
