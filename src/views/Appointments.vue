@@ -106,6 +106,7 @@
             :key="chair.id"
             class="cal-cell"
             :class="cellClass(time, chair)"
+            :title="getBooking(time, chair.id) ? getBooking(time, chair.id).name + ' — ' + getBooking(time, chair.id).services : ''"
             @click="onCellClick(time, chair)"
           >
             <template v-if="getBooking(time, chair.id)">
@@ -490,13 +491,14 @@ onMounted(async () => {
 
 .time-col {
   display: flex; align-items: center; justify-content: flex-end;
-  padding: 0 10px 0 0; min-height: 58px;
+  padding: 0 10px 0 0; height: 58px;
 }
 .time-lbl { font-size: 11px; color: var(--color-text-muted); white-space: nowrap; }
 
 .cal-cell {
-  min-height: 58px; border-left: 1px solid var(--color-border);
+  height: 58px; border-left: 1px solid var(--color-border);
   padding: 4px; cursor: pointer; position: relative;
+  overflow: hidden;
   transition: background var(--transition);
 }
 .cal-cell--empty:hover { background: var(--color-surface-2); }
@@ -514,9 +516,9 @@ onMounted(async () => {
 }
 .cal-cell--empty:hover .cell-empty { opacity: 1; }
 
-.cell-booking { padding: 5px 6px; }
-.cell-name    { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cell-svc     { font-size: 10px; color: var(--color-text-muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cell-booking { padding: 5px 6px; height: 100%; display: flex; flex-direction: column; justify-content: flex-start; overflow: hidden; }
+.cell-name    { font-size: 12px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
+.cell-svc     { font-size: 10px; color: var(--color-text-muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex-shrink: 0; }
 
 /* WhatsApp button on booked cell — visible on hover */
 .cell-wa-btn {

@@ -248,8 +248,11 @@ async function loadData() {
     const res = await fetch(`${API_URL}?action=dashboard&date=${today}`)
     const json = await res.json()
     if (json.success) {
-      stats.value = { ...stats.value, ...json.stats }
-      todayRawBookings.value = json.today || {}
+      const todaySlots  = json.today || {}
+      const todayHair   = Object.values(todaySlots).filter(b => b.chairType === 'hair').length
+      const todayBeauty = Object.values(todaySlots).filter(b => b.chairType === 'beauty').length
+      stats.value = { ...stats.value, ...json.stats, todayHair, todayBeauty }
+      todayRawBookings.value = todaySlots
     }
   } catch (err) {
     console.error(err)
