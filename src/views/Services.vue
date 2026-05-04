@@ -659,11 +659,17 @@
                  WhatsApp
               </button>
 
-              <button class="inv-btn inv-btn--done" @click="doneInvoice">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <button class="inv-btn inv-btn--done" @click="doneInvoice" :disabled="doneSaving">
+                <svg v-if="doneSaving" class="spin-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23,4 23,10 17,10"/>
+                  <polyline points="1,20 1,14 7,14"/>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/>
+                  <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/>
+                </svg>
+                <svg v-else width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="20 6 9 17 4 12"/>
                 </svg>
-                Done
+                {{ doneSaving ? 'Saving…' : 'Done' }}
               </button>
             </div>
 
@@ -1351,7 +1357,13 @@ function printInvoice() {
   setTimeout(() => win.print(), 500)
 }
 
+// ── Done button saving state ──
+const doneSaving = ref(false)
+
 async function doneInvoice() {
+  if (doneSaving.value) return
+  doneSaving.value = true
+
   // Build items summary: "Women's Hair Trim x1 (Lucky); D-Tan x1 (Priyanka)"
   const itemsSummary = invoiceModal.items
     .map(i => `${i.serviceName} x${i.qty}${i.staff ? ` (${i.staff})` : ''}`)
@@ -1382,15 +1394,20 @@ async function doneInvoice() {
       grandTotal:     invoiceModal.grandTotal,
       paymentMethod:  invoiceModal.paymentMethod,
     })
-    await fetch(`${API_URL}?${params.toString()}`)
+    const res  = await fetch(`${API_URL}?${params.toString()}`)
+    const data = await res.json()
+    if (!data.success) throw new Error(data.error || 'Save failed')
+
+    invoiceModal.show = false
+    invoiceModal.paymentMethod = 'Cash'
+    clearBill()
+    showToast('Invoice saved to report! ✓', 'success')
   } catch (err) {
     console.error('Report save failed:', err)
+    showToast('Failed to save invoice: ' + (err.message || 'Network error'), 'error')
+  } finally {
+    doneSaving.value = false
   }
-
-  invoiceModal.show = false
-  invoiceModal.paymentMethod = 'Cash'
-  clearBill()
-  showToast('Invoice saved! ✓', 'success')
 }
 
 // ── Toast ──
