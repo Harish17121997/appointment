@@ -609,6 +609,39 @@
               </div>
             </div>
 
+            <!-- Payment Method -->
+            <div class="inv-payment-row">
+              <span class="inv-payment-label">Payment via</span>
+              <div class="inv-payment-toggle">
+                <button
+                  class="inv-pay-opt"
+                  :class="{ 'inv-pay-opt--active inv-pay-opt--cash': invoiceModal.paymentMethod === 'Cash' }"
+                  @click="invoiceModal.paymentMethod = 'Cash'"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="7" width="20" height="14" rx="2"/>
+                    <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+                    <line x1="12" y1="12" x2="12" y2="16"/>
+                    <line x1="10" y1="14" x2="14" y2="14"/>
+                  </svg>
+                  Cash
+                </button>
+                <button
+                  class="inv-pay-opt"
+                  :class="{ 'inv-pay-opt--active inv-pay-opt--upi': invoiceModal.paymentMethod === 'UPI' }"
+                  @click="invoiceModal.paymentMethod = 'UPI'"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="5" y="2" width="14" height="20" rx="2"/>
+                    <line x1="12" y1="18" x2="12.01" y2="18"/>
+                    <line x1="9" y1="7" x2="15" y2="7"/>
+                    <line x1="9" y1="11" x2="13" y2="11"/>
+                  </svg>
+                  UPI
+                </button>
+              </div>
+            </div>
+
             <!-- Send Actions -->
             <div class="inv-actions">
               <button class="inv-btn inv-btn--print" @click="printInvoice">
@@ -625,13 +658,7 @@
                 </svg>
                  WhatsApp
               </button>
-              <!-- <button class="inv-btn inv-btn--email" @click="sendInvoiceEmail">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-                  <polyline points="22,6 12,13 2,6"/>
-                </svg>
-                Send Email
-              </button> -->
+
               <button class="inv-btn inv-btn--done" @click="doneInvoice">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="20 6 9 17 4 12"/>
@@ -1150,6 +1177,7 @@ const invoiceModal = reactive({
   discount: 0,
   discountReason: '',
   grandTotal: 0,
+  paymentMethod: 'Cash',  // 'Cash' or 'UPI'
 })
 
 function generateInvoiceNo() {
@@ -1323,10 +1351,46 @@ function printInvoice() {
   setTimeout(() => win.print(), 500)
 }
 
-function doneInvoice() {
+async function doneInvoice() {
+  // Build items summary: "Women's Hair Trim x1 (Lucky); D-Tan x1 (Priyanka)"
+  const itemsSummary = invoiceModal.items
+    .map(i => `${i.serviceName} x${i.qty}${i.staff ? ` (${i.staff})` : ''}`)
+    .join('; ')
+
+  // Deduplicated staff list
+  const staffSet = [...new Set(
+    invoiceModal.items.map(i => i.staff).filter(Boolean)
+  )]
+
+  // Today as DD-MM-YYYY
+  const now = new Date()
+  const pad = n => String(n).padStart(2, '0')
+  const dateStr = `${pad(now.getDate())}-${pad(now.getMonth() + 1)}-${now.getFullYear()}`
+
+  try {
+    const params = new URLSearchParams({
+      action:         'reportSave',
+      date:           dateStr,
+      invoiceNo:      invoiceModal.invoiceNo,
+      customerName:   invoiceModal.customerName  || 'Walk-in',
+      customerPhone:  invoiceModal.customerPhone || '',
+      items:          itemsSummary,
+      staffList:      staffSet.join(', '),
+      subtotal:       invoiceModal.subtotal,
+      discount:       invoiceModal.discount,
+      discountReason: invoiceModal.discountReason || '',
+      grandTotal:     invoiceModal.grandTotal,
+      paymentMethod:  invoiceModal.paymentMethod,
+    })
+    await fetch(`${API_URL}?${params.toString()}`)
+  } catch (err) {
+    console.error('Report save failed:', err)
+  }
+
   invoiceModal.show = false
+  invoiceModal.paymentMethod = 'Cash'
   clearBill()
-  showToast('Invoice completed!', 'success')
+  showToast('Invoice saved! ✓', 'success')
 }
 
 // ── Toast ──
@@ -2111,5 +2175,55 @@ onMounted(() => {
 /* Spinner */
 .ptab-spin { animation: ptab-spin-kf 0.8s linear infinite; display: inline-block; flex-shrink: 0; }
 @keyframes ptab-spin-kf { to { transform: rotate(360deg); } }
+
+
+/* ── Payment Method Toggle (Invoice Modal) ── */
+.inv-payment-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 20px 8px;
+  border-top: 1px solid var(--color-border, #f0f0f0);
+}
+.inv-payment-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+.inv-payment-toggle {
+  display: flex;
+  gap: 6px;
+}
+.inv-pay-opt {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 18px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1.5px solid var(--color-border, #e0e0e0);
+  background: var(--color-surface-2, #f9f9f9);
+  color: var(--color-text-muted, #777);
+  transition: all 0.15s;
+}
+.inv-pay-opt:hover {
+  border-color: var(--color-accent, #8B6F47);
+  color: var(--color-accent, #8B6F47);
+}
+.inv-pay-opt--cash.inv-pay-opt--active {
+  background: #f0fff4;
+  border-color: #38a169;
+  color: #276749;
+}
+.inv-pay-opt--upi.inv-pay-opt--active {
+  background: #f5f3ff;
+  border-color: #6c63ff;
+  color: #553c9a;
+}
 
 </style>
