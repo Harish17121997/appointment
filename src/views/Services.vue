@@ -740,6 +740,7 @@ const allServicesFlat = [
       { name: "Men's Hair Wash", price: 300 },
       { name: "Men's Premium Hair Spa", price: 1200 },
       { name: "Men's Haircut", price: 300 },
+      { name: "Men's Shaving", price: 200 },
     ]
   },
   {

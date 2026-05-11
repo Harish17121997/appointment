@@ -15,8 +15,8 @@ export const TIME_SLOTS = [
 export const CHAIRS = [
   { id: 'hair1',   label: 'Lucky',    type: 'hair' },
   { id: 'hair2',   label: 'Shaad',    type: 'hair' },
-  { id: 'beauty1', label: 'Priyanka', type: 'beauty' },
-  { id: 'beauty2', label: 'Surabhi',  type: 'beauty' },
+  { id: 'beauty1', label: 'Priya', type: 'beauty' },
+  { id: 'beauty2', label: 'Lakshmi',  type: 'beauty' },
 ]
 
 // ─── HAIR SERVICES ───────────────────────────────────────────────────────────
