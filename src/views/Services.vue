@@ -843,7 +843,7 @@ const allServicesFlat = [
   },
 ]
 
-const staffList = ref(['Lucky', 'Shaad', 'Priyanka', 'Surabhi'])
+const staffList = ref(['Lucky', 'Shaad', 'Priya', 'Lakshmi', 'Surabhi'])
 
 // ── Products ──────────────────────────────────────────────────────────────────
 const products = ref([])
