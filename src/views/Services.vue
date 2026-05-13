@@ -843,7 +843,17 @@ const allServicesFlat = [
   },
 ]
 
-const staffList = ref(['Lucky', 'Shaad', 'Priya', 'Lakshmi', 'Surabhi'])
+// ── Staff list (fetched directly — names only, no attendance/payment overhead) ─
+const staffList = ref([])
+async function loadStaffNames() {
+  try {
+    const res  = await fetch(`${API_URL}?action=staffGet`)
+    const data = await res.json()
+    staffList.value = (data.staff || []).map(s => s.name).filter(Boolean)
+  } catch (err) {
+    console.error('loadStaffNames error:', err)
+  }
+}
 
 // ── Products ──────────────────────────────────────────────────────────────────
 const products = ref([])
@@ -1038,6 +1048,7 @@ function handleProductClickOutside(e) {
 
 onMounted(() => {
   document.addEventListener('mousedown', handleProductClickOutside)
+  loadStaffNames()
 })
 onUnmounted(() => {
   document.removeEventListener('mousedown', handleProductClickOutside)

@@ -25,7 +25,7 @@ export function useWhatsApp() {
     return (
       `Hello *${booking.name}*\n\n` +
       `This is a reminder from *Scintillate Unisex Salon*\n\n` +
-      `Your appointment is in *15 minutes*!\n\n` +
+      
       `Time: *${time}*\n` +
       `Service: *${booking.services}*\n` +
       `${chairLabel}\n\n` +
