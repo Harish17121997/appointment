@@ -262,7 +262,12 @@
                       <div class="item-name">{{ item.serviceName }}</div>
                       <span class="item-badge" :class="item.isProduct ? 'item-badge--product' : ''">{{ item.isProduct ? 'Product' : 'Service' }}</span>
                     </td>
-                    <td>{{ item.staff || '—' }}</td>
+                    <td>
+                      <select v-model="item.staff" class="staff-inline-select">
+                        <option value="">—</option>
+                        <option v-for="s in staffList" :key="s" :value="s">{{ s }}</option>
+                      </select>
+                    </td>
                     <td><input v-model.number="item.rate" type="number" class="rate-input" /></td>
                     <td><input v-model.number="item.qty" type="number" min="1" class="qty-input" /></td>
                     <td class="td-total">₹{{ (item.rate * item.qty).toLocaleString('en-IN') }}</td>
@@ -1629,6 +1634,15 @@ onMounted(() => {
   color: var(--color-text, #1a1a1a); outline: none;
 }
 .qty-input { width: 50px; }
+.staff-inline-select {
+  padding: 5px 6px; border-radius: 5px; font-size: 12.5px;
+  border: 1px solid var(--color-border, #e0e0e0);
+  background: var(--color-surface, #fff);
+  color: var(--color-text, #1a1a1a);
+  outline: none; cursor: pointer; max-width: 110px;
+  transition: border-color 0.15s;
+}
+.staff-inline-select:focus { border-color: var(--color-accent, #8B6F47); }
 .remove-btn {
   background: none; border: none; cursor: pointer;
   color: var(--color-danger, #e53e3e); opacity: 0.6;
