@@ -1381,9 +1381,9 @@ async function doneInvoice() {
   if (doneSaving.value) return
   doneSaving.value = true
 
-  // Build items summary: "Women's Hair Trim x1 (Lucky); D-Tan x1 (Priyanka)"
+  // Build items summary: "Women's Hair Trim x1 @600 (Lucky); D-Tan x1 @500 (Priyanka)"
   const itemsSummary = invoiceModal.items
-    .map(i => `${i.serviceName} x${i.qty}${i.staff ? ` (${i.staff})` : ''}`)
+    .map(i => `${i.serviceName} x${i.qty} @${i.rate * i.qty}${i.staff ? ` (${i.staff})` : ''}`)
     .join('; ')
 
   // Deduplicated staff list

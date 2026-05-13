@@ -407,26 +407,38 @@ const staffBreakdown = computed(() => {
     const staffInvoice = {}  // staffName → total for this invoice
     let unattributed = 0
 
-    parts.forEach(part => {
-      // Match pattern: "Service Name xQty (StaffName)"
-      const match = part.match(/^(.+?)\s+x(\d+)\s+\((.+?)\)$/)
-      if (match) {
-        const svcName  = match[1].trim()
-        const qty      = Number(match[2])
-        const staff    = match[3].trim()
+    // Track whether any item has a @rate so we know which format this invoice uses
+    let hasRates = false
 
-        // Look up price from the invoice row grand total — we can't get per-item price
-        // so we split revenue proportionally among staff named in the invoice
-        if (!staffInvoice[staff]) staffInvoice[staff] = { count: 0 }
+    parts.forEach(part => {
+      // New format with rate: "Service Name xQty @Amount (StaffName)"
+      const matchNew = part.match(/^(.+?)\s+x(\d+)\s+@(\d+(?:\.\d+)?)\s+\((.+?)\)$/)
+      // New format no staff: "Service Name xQty @Amount"
+      const matchNewNoStaff = part.match(/^(.+?)\s+x(\d+)\s+@(\d+(?:\.\d+)?)$/)
+      // Old format: "Service Name xQty (StaffName)"
+      const matchOld = part.match(/^(.+?)\s+x(\d+)\s+\((.+?)\)$/)
+
+      if (matchNew) {
+        hasRates = true
+        const amount = Number(matchNew[3])
+        const staff  = matchNew[4].trim()
+        if (!staffInvoice[staff]) staffInvoice[staff] = { amount: 0, count: 0 }
+        staffInvoice[staff].amount += amount
+        staffInvoice[staff].count  += Number(matchNew[2])
+      } else if (matchNewNoStaff) {
+        hasRates = true
+        unattributed += Number(matchNewNoStaff[3])
+      } else if (matchOld) {
+        const qty   = Number(matchOld[2])
+        const staff = matchOld[3].trim()
+        if (!staffInvoice[staff]) staffInvoice[staff] = { amount: 0, count: 0 }
         staffInvoice[staff].count += qty
       } else {
-        // Item has no staff attribution — "Service Name x1"
         unattributed++
       }
     })
 
     const staffNames = Object.keys(staffInvoice)
-    const totalItems = Object.values(staffInvoice).reduce((s, v) => s + v.count, 0) + unattributed
 
     if (staffNames.length === 0) {
       // No staff listed — attribute to "Unassigned"
@@ -438,14 +450,26 @@ const staffBreakdown = computed(() => {
       return
     }
 
-    staffNames.forEach(staff => {
-      if (!map[staff]) map[staff] = { revenue: 0, cash: 0, upi: 0, services: 0 }
-      const share   = totalItems > 0 ? staffInvoice[staff].count / totalItems : 1 / staffNames.length
-      const amount  = Math.round(Number(row.grandTotal || 0) * share)
-      map[staff].revenue  += amount
-      map[staff][method]  += amount
-      map[staff].services += staffInvoice[staff].count
-    })
+    if (hasRates) {
+      // New format: use exact @amount per staff — correct attribution
+      staffNames.forEach(staff => {
+        if (!map[staff]) map[staff] = { revenue: 0, cash: 0, upi: 0, services: 0 }
+        map[staff].revenue  += staffInvoice[staff].amount
+        map[staff][method]  += staffInvoice[staff].amount
+        map[staff].services += staffInvoice[staff].count
+      })
+    } else {
+      // Old format (no @rate): fall back to proportional split by item count
+      const totalItems = Object.values(staffInvoice).reduce((s, v) => s + v.count, 0) + unattributed
+      staffNames.forEach(staff => {
+        if (!map[staff]) map[staff] = { revenue: 0, cash: 0, upi: 0, services: 0 }
+        const share  = totalItems > 0 ? staffInvoice[staff].count / totalItems : 1 / staffNames.length
+        const amount = Math.round(Number(row.grandTotal || 0) * share)
+        map[staff].revenue  += amount
+        map[staff][method]  += amount
+        map[staff].services += staffInvoice[staff].count
+      })
+    }
   })
 
   const total = Object.values(map).reduce((s, v) => s + v.revenue, 0) || 1
