@@ -117,13 +117,26 @@
           <button class="date-nav-btn" @click="changeMonth(1)">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
+          <button
+            class="btn-edit-mode" :class="{ 'btn-edit-mode--on': ownerEditMode }"
+            @click="ownerEditMode = !ownerEditMode"
+            title="Owner only: unlock past days to correct mistakes">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="3" y="11" width="18" height="11" rx="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            {{ ownerEditMode ? '✏️ Correction ON' : '' }}
+          </button>
+        </div>
+        <div v-if="ownerEditMode" class="edit-mode-banner">
+          ⚠️ <strong>Owner correction mode is ON</strong> — you can edit any day. Turn off when done.
         </div>
 
         <!-- Day summary chips -->
         <div class="days-summary">
           <span class="days-chip">📅 Total days: <strong>{{ daysInMonth }}</strong></span>
           <span class="days-chip days-chip--work">✅ Working (Mon–Sat): <strong>{{ workingDays }}</strong></span>
-          <span class="days-chip days-chip--off">🔴 Sundays (off): <strong>{{ sundayCount }}</strong></span>
+          <span class="days-chip days-chip--leave">🟡 Leave quota: <strong>{{ MAX_ABSENT_PER_MONTH }} days/month</strong> — tap today only</span>
         </div>
 
         <div v-if="!isLoading && staffList.length === 0" class="empty-state">
@@ -159,14 +172,18 @@
                   v-for="day in daysInMonth" :key="day"
                   class="att-day-col" :class="{ 'att-day--sun': isSunday(day) }">
                   <button
-                    class="att-btn" :class="attClass(s.id, day)"
+                    class="att-btn"
+                    :class="[attClass(s.id, day), { 'att-locked': !ownerEditMode && (isPastDay(day) || isFutureDay(day)) }]"
                     @click="toggleAtt(s.id, day)"
-                    :title="attLabel(s.id, day)">
-                    {{ attSymbol(s.id, day) }}
+                    :title="!ownerEditMode && isPastDay(day) ? 'Past day — locked (owner can unlock to fix)' : !ownerEditMode && isFutureDay(day) ? 'Future day — not yet' : attLabel(s.id, day)"
+                    :disabled="!ownerEditMode && (isPastDay(day) || isFutureDay(day))">
+                    {{ (!ownerEditMode && isPastDay(day)) ? (attSymbol(s.id, day) === '–' ? '🔒' : attSymbol(s.id, day)) : (!ownerEditMode && isFutureDay(day)) ? '' : attSymbol(s.id, day) }}
                   </button>
                 </td>
                 <td class="att-total-col att-total--present">{{ presentCount(s.id) }}</td>
-                <td class="att-total-col att-total--absent">{{ absentCount(s.id) }}</td>
+                <td class="att-total-col att-total--absent" :title="`${absentCount(s.id)} of ${MAX_ABSENT_PER_MONTH} leaves used`">
+                  {{ absentCount(s.id) }}<span style="font-size:8px;opacity:.6">/{{ MAX_ABSENT_PER_MONTH }}</span>
+                </td>
                 <td class="att-total-col att-total--half">{{ halfCount(s.id) }}</td>
               </tr>
             </tbody>
@@ -456,12 +473,9 @@ const {
 } = useStaff()
 
 // ── TABS ───────────────────────────────────────────────────────────────────────
-const activeTab = ref('staff')
+const activeTab = ref('attendance')
 const tabs = [
-  {
-    id: 'staff', label: 'Staff List',
-    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>'
-  },
+  
   {
     id: 'attendance', label: 'Attendance',
     icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>'
@@ -470,10 +484,15 @@ const tabs = [
     id: 'payment', label: 'Salary',
     icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12"/><path d="M6 7h12"/><path d="M6 11h5a4 4 0 1 0 0-8"/><path d="M6 11l8 10"/></svg>'
   },
+  {
+    id: 'staff', label: 'Staff List',
+    icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>'
+  },
 ]
 
 // ── MONTH ──────────────────────────────────────────────────────────────────────
-const viewDate = ref(new Date())
+const viewDate     = ref(new Date())
+const ownerEditMode = ref(false)   // Owner-only: allows editing past days to fix mistakes
 
 const monthKey = computed(() => {
   const d = viewDate.value
@@ -512,6 +531,18 @@ function isToday(day) {
   const now = new Date(), d = viewDate.value
   return now.getFullYear() === d.getFullYear() && now.getMonth() === d.getMonth() && now.getDate() === day
 }
+function isPastDay(day) {
+  const now = new Date(), d = viewDate.value
+  const target = new Date(d.getFullYear(), d.getMonth(), day)
+  const today  = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return target < today
+}
+function isFutureDay(day) {
+  const now = new Date(), d = viewDate.value
+  const target = new Date(d.getFullYear(), d.getMonth(), day)
+  const today  = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return target > today
+}
 function isSunday(day) {
   return new Date(viewDate.value.getFullYear(), viewDate.value.getMonth(), day).getDay() === 0
 }
@@ -523,17 +554,34 @@ function weekdayShort(day) {
 // ── ATTENDANCE HELPERS ─────────────────────────────────────────────────────────
 // attendance is keyed by STRING staffId → { dayNumber: status }
 // NEVER use staffId_month as key — that was the original bug.
+const MAX_ABSENT_PER_MONTH = 4
 function getAtt(staffId, day) {
   return attendance.value[String(staffId)]?.[Number(day)] || ''
 }
 
 async function toggleAtt(staffId, day) {
+  // ── LOCK: only today is editable UNLESS owner has correction mode ON ──
+  if (!isToday(day) && !ownerEditMode.value) return
+
   const sid  = String(staffId)
   const dNum = Number(day)
   if (!attendance.value[sid]) attendance.value[sid] = {}
-  const cur  = attendance.value[sid][dNum] || ''
-  const cycle = ['', 'P', 'A', 'H']
-  const next  = cycle[(cycle.indexOf(cur) + 1) % cycle.length]
+
+  const cur    = attendance.value[sid][dNum] || ''
+  const cycle  = ['', 'P', 'A', 'H']
+  let   nextIdx = (cycle.indexOf(cur) + 1) % cycle.length
+  let   next    = cycle[nextIdx]
+
+  // ── LIMIT: block going to 'A' if already at 4 absents this month ──
+  if (next === 'A') {
+    const currentAbsents = Object.entries(attendance.value[sid] || {})
+      .filter(([d, v]) => Number(d) !== dNum && v === 'A').length
+    if (currentAbsents >= MAX_ABSENT_PER_MONTH) {
+      // skip 'A', jump straight to 'H'
+      next = 'H'
+    }
+  }
+
   attendance.value[sid][dNum] = next
   await saveAttendanceCell(sid, monthKey.value, dNum, next)
 }
@@ -898,6 +946,29 @@ function changePin() {
 .att-btn.att-p { background: var(--color-success-light); color: var(--color-success); }
 .att-btn.att-a { background: var(--color-danger-light);  color: var(--color-danger);  }
 .att-btn.att-h { background: #FEF3C7; color: #D97706; }
+.att-btn.att-locked {
+  opacity: .45; cursor: not-allowed;
+  background: var(--color-surface-2) !important;
+  font-size: 9px;
+}
+.att-btn.att-locked.att-p { background: var(--color-success-light) !important; opacity: .5; }
+.att-btn.att-locked.att-a { background: var(--color-danger-light)  !important; opacity: .5; }
+.att-btn.att-locked.att-h { background: #FEF3C7                    !important; opacity: .5; }
+.days-chip--leave { background: #FEF9C3; color: #92400E; }
+.btn-edit-mode {
+  margin-left: auto; display: flex; align-items: center; gap: 5px;
+  padding: 5px 11px; border-radius: var(--radius-md); font-size: 11px; font-weight: 600;
+  border: 1.5px solid var(--color-border); background: var(--color-surface-2);
+  color: var(--color-text-muted); cursor: pointer; transition: all var(--transition);
+}
+.btn-edit-mode:hover { border-color: var(--color-accent); color: var(--color-accent); }
+.btn-edit-mode--on {
+  background: #FEF3C7; border-color: #D97706; color: #92400E;
+}
+.edit-mode-banner {
+  background: #FEF9C3; border: 1.5px solid #FCD34D; border-radius: var(--radius-md);
+  padding: 8px 14px; font-size: 12px; color: #78350F; margin-bottom: 8px;
+}
 .att-legend {
   font-size: 11px; color: var(--color-text-muted);
   display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
