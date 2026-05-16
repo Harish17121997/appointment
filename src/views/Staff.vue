@@ -1,6 +1,15 @@
 <template>
   <div class="staff-page">
 
+    <!-- ══ TOAST ══════════════════════════════════════════════════════════════ -->
+    <transition name="toast-slide">
+      <div v-if="toast.show" class="toast" :class="'toast--' + toast.type">
+        <svg v-if="toast.type==='warn'" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <svg v-else width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 8 12 12 14 14"/></svg>
+        {{ toast.msg }}
+      </div>
+    </transition>
+
     <!-- ══ OWNER PIN GATE ══════════════════════════════════════════════════════ -->
     <transition name="modal">
       <div v-if="!isOwner" class="pin-gate">
@@ -181,8 +190,10 @@
                   </button>
                 </td>
                 <td class="att-total-col att-total--present">{{ presentCount(s.id) }}</td>
-                <td class="att-total-col att-total--absent" :title="`${absentCount(s.id)} of ${MAX_ABSENT_PER_MONTH} leaves used`">
-                  {{ absentCount(s.id) }}<span style="font-size:8px;opacity:.6">/{{ MAX_ABSENT_PER_MONTH }}</span>
+                <td class="att-total-col att-total--absent"
+                  :class="{ 'att-absent--full': absentCount(s.id) >= MAX_ABSENT_PER_MONTH }"
+                  :title="absentCount(s.id) + ' of ' + MAX_ABSENT_PER_MONTH + ' leaves used this month'">
+                  {{ absentCount(s.id) }}<span style="font-size:8px;opacity:.55">/{{ MAX_ABSENT_PER_MONTH }}</span>
                 </td>
                 <td class="att-total-col att-total--half">{{ halfCount(s.id) }}</td>
               </tr>
@@ -555,29 +566,37 @@ function weekdayShort(day) {
 // attendance is keyed by STRING staffId → { dayNumber: status }
 // NEVER use staffId_month as key — that was the original bug.
 const MAX_ABSENT_PER_MONTH = 4
+
+// ── TOAST NOTIFICATION ────────────────────────────────────────────────────────
+const toast = ref({ show: false, msg: '', type: 'info' })
+let toastTimer = null
+function showToast(msg, type = 'info') {
+  if (toastTimer) clearTimeout(toastTimer)
+  toast.value = { show: true, msg, type }
+  toastTimer  = setTimeout(() => { toast.value.show = false }, 3200)
+}
 function getAtt(staffId, day) {
   return attendance.value[String(staffId)]?.[Number(day)] || ''
 }
 
 async function toggleAtt(staffId, day) {
-  // ── LOCK: only today is editable UNLESS owner has correction mode ON ──
+  // ── LOCK: only today is editable UNLESS owner correction mode is ON ──
   if (!isToday(day) && !ownerEditMode.value) return
 
   const sid  = String(staffId)
   const dNum = Number(day)
   if (!attendance.value[sid]) attendance.value[sid] = {}
 
-  const cur    = attendance.value[sid][dNum] || ''
-  const cycle  = ['', 'P', 'A', 'H']
-  let   nextIdx = (cycle.indexOf(cur) + 1) % cycle.length
-  let   next    = cycle[nextIdx]
+  const cur   = attendance.value[sid][dNum] || ''
+  const cycle = ['', 'P', 'A', 'H']
+  let   next  = cycle[(cycle.indexOf(cur) + 1) % cycle.length]
 
-  // ── LIMIT: block going to 'A' if already at 4 absents this month ──
-  if (next === 'A') {
-    const currentAbsents = Object.entries(attendance.value[sid] || {})
+  // ── LIMIT: max 4 Absent/month — only applies to normal mode, owner bypasses ──
+  if (next === 'A' && !ownerEditMode.value) {
+    const usedAbsents = Object.entries(attendance.value[sid] || {})
       .filter(([d, v]) => Number(d) !== dNum && v === 'A').length
-    if (currentAbsents >= MAX_ABSENT_PER_MONTH) {
-      // skip 'A', jump straight to 'H'
+    if (usedAbsents >= MAX_ABSENT_PER_MONTH) {
+      showToast('Leave limit reached! Only ' + MAX_ABSENT_PER_MONTH + ' absents allowed per month.', 'warn')
       next = 'H'
     }
   }
@@ -930,7 +949,8 @@ function changePin() {
 .att-day-col   { min-width: 30px; width: 30px; }
 .att-total-col { min-width: 32px; font-weight: 600; padding: 0 4px !important; }
 .att-total--present { color: var(--color-success); }
-.att-total--absent  { color: var(--color-danger); }
+.att-total--absent         { color: var(--color-danger); }
+.att-absent--full          { background: var(--color-danger-light); border-radius: 4px; font-weight: 700; }
 .att-total--half    { color: var(--color-warning, #D97706); }
 .att-day--today th, .att-day--today td { background: var(--color-accent-xlt, #FAF6F1); }
 .att-day--sun  { color: var(--color-danger); opacity: .65; }
@@ -969,6 +989,21 @@ function changePin() {
   background: #FEF9C3; border: 1.5px solid #FCD34D; border-radius: var(--radius-md);
   padding: 8px 14px; font-size: 12px; color: #78350F; margin-bottom: 8px;
 }
+
+/* ── Toast ── */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  display: flex; align-items: center; gap: 8px;
+  padding: 11px 20px; border-radius: 99px;
+  font-size: 13px; font-weight: 500; z-index: 9999;
+  box-shadow: 0 4px 20px rgba(0,0,0,.18);
+  white-space: nowrap; pointer-events: none;
+}
+.toast--warn  { background: #FEF3C7; color: #92400E; border: 1.5px solid #FCD34D; }
+.toast--info  { background: var(--color-surface); color: var(--color-text); border: 1px solid var(--color-border); }
+.toast--ok    { background: #D1FAE5; color: #065F46; border: 1.5px solid #6EE7B7; }
+.toast-slide-enter-active, .toast-slide-leave-active { transition: all .25s ease; }
+.toast-slide-enter-from, .toast-slide-leave-to { opacity: 0; transform: translateX(-50%) translateY(12px); }
 .att-legend {
   font-size: 11px; color: var(--color-text-muted);
   display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
