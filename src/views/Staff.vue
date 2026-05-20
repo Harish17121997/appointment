@@ -182,11 +182,13 @@
                   class="att-day-col" :class="{ 'att-day--sun': isSunday(day) }">
                   <button
                     class="att-btn"
-                    :class="[attClass(s.id, day), { 'att-locked': !ownerEditMode && (isPastDay(day) || isFutureDay(day)) }]"
+                    :class="[attClass(s.id, day), {
+                      'att-locked': !ownerEditMode && (isPastDay(day) || isFutureDay(day))
+                    }]"
                     @click="toggleAtt(s.id, day)"
-                    :title="!ownerEditMode && isPastDay(day) ? 'Past day — locked (owner can unlock to fix)' : !ownerEditMode && isFutureDay(day) ? 'Future day — not yet' : attLabel(s.id, day)"
+                    :title="attButtonTitle(s.id, day)"
                     :disabled="!ownerEditMode && (isPastDay(day) || isFutureDay(day))">
-                    {{ (!ownerEditMode && isPastDay(day)) ? (attSymbol(s.id, day) === '–' ? '🔒' : attSymbol(s.id, day)) : (!ownerEditMode && isFutureDay(day)) ? '' : attSymbol(s.id, day) }}
+                    {{ attButtonSymbol(s.id, day) }}
                   </button>
                 </td>
                 <td class="att-total-col att-total--present">{{ presentCount(s.id) }}</td>
@@ -206,7 +208,7 @@
           <span class="leg-a">A</span> Absent &nbsp;
           <span class="leg-h">H</span> Half-day &nbsp;
           <span class="leg-o">–</span> Not marked
-          <em class="leg-note">Tap a cell to cycle status. Each tap auto-saves to Google Sheet.</em>
+          <em class="leg-note">Tap today to cycle: P → H → clear. Enable Correction Mode to mark Absent.</em>
         </p>
       </div>
 
@@ -576,7 +578,9 @@ function showToast(msg, type = 'info') {
   toastTimer  = setTimeout(() => { toast.value.show = false }, 3200)
 }
 function getAtt(staffId, day) {
-  return attendance.value[String(staffId)]?.[Number(day)] || ''
+  const val = attendance.value[String(staffId)]?.[Number(day)]
+  // Explicitly check: only 'P', 'A', 'H' are valid; anything else (undefined, null, '') is ''
+  return (val === 'P' || val === 'A' || val === 'H') ? val : ''
 }
 
 async function toggleAtt(staffId, day) {
@@ -587,22 +591,52 @@ async function toggleAtt(staffId, day) {
   const dNum = Number(day)
   if (!attendance.value[sid]) attendance.value[sid] = {}
 
-  const cur   = attendance.value[sid][dNum] || ''
-  const cycle = ['', 'P', 'A', 'H']
-  let   next  = cycle[(cycle.indexOf(cur) + 1) % cycle.length]
+  // Use getAtt() — NOT raw object access — so stale '' keys are treated as empty
+  const cur  = getAtt(sid, dNum)
 
-  // ── LIMIT: max 4 Absent/month — only applies to normal mode, owner bypasses ──
-  if (next === 'A' && !ownerEditMode.value) {
-    const usedAbsents = Object.entries(attendance.value[sid] || {})
+  // ── CYCLE RULES ──────────────────────────────────────────────────────────────
+  // Normal mode  (today only):  '' → P → H → ''   (no A — only owner can mark absent)
+  // Owner edit mode (any day):  '' → P → A → H → ''  (full cycle)
+  let next
+  if (ownerEditMode.value) {
+    const cycle = ['', 'P', 'A', 'H']
+    next = cycle[(cycle.indexOf(cur) + 1) % cycle.length]
+  } else {
+    const cycle = ['', 'P', 'A', 'H']
+    next = cycle[(cycle.indexOf(cur) + 1) % cycle.length]
+  }
+
+  // ── ABSENT LIMIT (owner edit mode only — normal mode never reaches A) ────────
+  if (next === 'A' && ownerEditMode.value) {
+    const usedCount = Object.entries(attendance.value[sid] || {})
       .filter(([d, v]) => Number(d) !== dNum && v === 'A').length
-    if (usedAbsents >= MAX_ABSENT_PER_MONTH) {
+    if (usedCount >= MAX_ABSENT_PER_MONTH) {
       showToast('Leave limit reached! Only ' + MAX_ABSENT_PER_MONTH + ' absents allowed per month.', 'warn')
       next = 'H'
     }
   }
 
-  attendance.value[sid][dNum] = next
-  await saveAttendanceCell(sid, monthKey.value, dNum, next)
+  // ── OPTIMISTIC UPDATE ────────────────────────────────────────────────────────
+  const prev = cur  // keep original value for rollback
+  setAttValue(sid, dNum, next)
+
+  // ── SAVE TO SHEET — rollback UI on failure ───────────────────────────────────
+  const ok = await saveAttendanceCell(sid, monthKey.value, dNum, next)
+  if (!ok) {
+    setAttValue(sid, dNum, prev)
+    showToast('Save failed — check your connection and try again.', 'warn')
+  }
+}
+
+// ── Helper: set or delete an attendance value cleanly ────────────────────────
+// Always deletes the key when value is '' so cycle reads are always clean
+function setAttValue(sid, dNum, val) {
+  if (!attendance.value[sid]) attendance.value[sid] = {}
+  if (val === '' || val === null || val === undefined) {
+    delete attendance.value[sid][dNum]
+  } else {
+    attendance.value[sid][dNum] = val
+  }
 }
 
 function attSymbol(staffId, day) { return getAtt(staffId, day) || '–' }
@@ -615,14 +649,33 @@ function attLabel(staffId, day) {
   return v === 'P' ? 'Present' : v === 'A' ? 'Absent' : v === 'H' ? 'Half-day' : 'Not marked'
 }
 
+// Returns the visible symbol inside each attendance button
+function attButtonSymbol(staffId, day) {
+  if (!ownerEditMode.value && isFutureDay(day)) return ''  // future: blank
+  const sym = attSymbol(staffId, day)
+  if (!ownerEditMode.value && isPastDay(day) && sym === '–') return '🔒'  // past, unmarked
+  return sym  // marked past, today, or any day in edit mode
+}
+
+// Returns the tooltip for each attendance button
+function attButtonTitle(staffId, day) {
+  if (!ownerEditMode.value && isPastDay(day))   return 'Past day — locked. Enable Correction Mode to fix.'
+  if (!ownerEditMode.value && isFutureDay(day)) return 'Future day — not yet available.'
+  const cycle = ownerEditMode.value ? 'P → A → H → clear' : 'P → H → clear  (enable Correction Mode to set Absent)'
+  return attLabel(staffId, day) + ' — tap to cycle: ' + cycle
+}
+
 function presentCount(staffId) {
-  return Object.values(attendance.value[String(staffId)] || {}).filter(v => v === 'P').length
+  const rec = attendance.value[String(staffId)] || {}
+  return Object.values(rec).filter(v => v === 'P').length
 }
 function absentCount(staffId) {
-  return Object.values(attendance.value[String(staffId)] || {}).filter(v => v === 'A').length
+  const rec = attendance.value[String(staffId)] || {}
+  return Object.values(rec).filter(v => v === 'A').length
 }
 function halfCount(staffId) {
-  return Object.values(attendance.value[String(staffId)] || {}).filter(v => v === 'H').length
+  const rec = attendance.value[String(staffId)] || {}
+  return Object.values(rec).filter(v => v === 'H').length
 }
 
 // ── ADJUSTMENT SAFE ACCESSOR ───────────────────────────────────────────────────

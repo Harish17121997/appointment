@@ -23,6 +23,12 @@ export function useStaff() {
   const isSaving  = ref(false)
   const error     = ref('')
 
+  // ── PENDING SAVES TRACKER ────────────────────────────────────────────────────
+  // Tracks in-flight attendance saves keyed by "staffId_day".
+  // fetchStaff skips overwriting cells that have a pending save, preventing
+  // the race condition where a slow fetch response resets a just-clicked cell.
+  const _pendingSaves = new Set()
+
   // ─── FETCH ALL DATA FOR A MONTH ──────────────────────────────────────────────
   async function fetchStaff(month) {
     isLoading.value = true
@@ -42,15 +48,29 @@ export function useStaff() {
 
       // ── Attendance: Apps Script returns { staffId: { day: status } }
       // Keys from sheet are staffId strings. Ensure every loaded staff has an entry.
+      // FIX: Skip cells with a pending in-flight save to prevent race condition
+      // where a slow fetch response resets a cell the user just clicked.
       const rawAtt = attData.attendance || {}
       const newAtt = {}
       staff.value.forEach(s => {
-        const sid      = String(s.id)
-        newAtt[sid]    = {}
-        // rawAtt keys may be numbers or strings — normalise
+        const sid   = String(s.id)
+        // Preserve any cells that are currently being saved
+        newAtt[sid] = { ...(attendance.value[sid] || {}) }
         const fromSheet = rawAtt[sid] || rawAtt[s.id] || {}
+        // Apply sheet values, but skip cells with pending saves
         Object.entries(fromSheet).forEach(([day, status]) => {
-          if (status) newAtt[sid][Number(day)] = status  // Number key, skip empty
+          const dNum = Number(day)
+          if (!_pendingSaves.has(`${sid}_${dNum}`)) {
+            if (status) newAtt[sid][dNum] = status
+            else        delete newAtt[sid][dNum]
+          }
+        })
+        // Clear days the sheet no longer has (deleted rows), skip pending saves
+        Object.keys(newAtt[sid]).forEach(day => {
+          const dNum = Number(day)
+          if (!_pendingSaves.has(`${sid}_${dNum}`) && !fromSheet[day] && !fromSheet[dNum]) {
+            delete newAtt[sid][dNum]
+          }
         })
       })
       attendance.value = newAtt
@@ -107,17 +127,27 @@ export function useStaff() {
 
   // ─── SAVE ONE ATTENDANCE CELL (called on every toggle → instant save) ────────
   async function saveAttendanceCell(staffId, month, day, status) {
+    const sid  = String(staffId)
+    const dNum = Number(day)
+    const pKey = `${sid}_${dNum}`
+    _pendingSaves.add(pKey)           // block fetch from overwriting this cell
     try {
       const params = new URLSearchParams({
         action:  'attendanceSave',
-        staffId: String(staffId),
+        staffId: sid,
         month,
-        day:     String(day),
+        day:     String(dNum),
         status:  status || ''
       })
-      await fetch(`${API_URL}?${params}`)
+      const res  = await fetch(`${API_URL}?${params}`)
+      const data = await res.json()
+      if (!data.success) throw new Error(data.error || 'Save failed')
+      return true
     } catch (err) {
       console.error('saveAttendanceCell error:', err)
+      return false
+    } finally {
+      _pendingSaves.delete(pKey)      // unblock future fetches for this cell
     }
   }
 
