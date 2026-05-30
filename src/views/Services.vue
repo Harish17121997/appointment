@@ -25,6 +25,10 @@
         </svg>
         Products
       </button>
+      <button class="tab-btn" :class="{ 'tab-btn--active': activeTab === 'expenses' }" @click="activeTab = 'expenses'; loadExpenses()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12"/><path d="M6 7h12"/><path d="M6 11h5a4 4 0 1 0 0-8"/><path d="M6 11l8 10"/></svg>
+        Expenses
+      </button>
     </div>
 
     <!-- ══════════════ SERVICES MENU TAB ══════════════ -->
@@ -524,6 +528,225 @@
     </div>
 
 
+    <!-- ══════════════ EXPENSES TAB ══════════════ -->
+    <div v-if="activeTab === 'expenses'" class="exptab">
+
+      <!-- Top bar -->
+      <div class="exptab__topbar">
+        <div class="exptab__topbar-left">
+          <div class="exptab__title">Salon Expenses</div>
+          <div class="exptab__subtitle">
+            <span class="exptab__count">{{ expensesList.length }} records</span>
+          </div>
+        </div>
+        <div class="exptab__topbar-right">
+          <!-- View toggle -->
+          <div class="exp-view-toggle">
+            <button class="exp-view-btn" :class="{ 'exp-view-btn--active': expView === 'daily' }" @click="expView = 'daily'; loadExpenses()">Daily</button>
+            <button class="exp-view-btn" :class="{ 'exp-view-btn--active': expView === 'monthly' }" @click="expView = 'monthly'; loadExpenses()">Monthly</button>
+          </div>
+          <!-- Date / Month picker -->
+          <input v-if="expView === 'daily'" type="date" v-model="expFilterDate" @change="loadExpenses" class="exp-date-input" />
+          <input v-else type="month" v-model="expFilterMonth" @change="loadExpenses" class="exp-date-input" />
+          <button class="ptab__btn-refresh" @click="loadExpenses" :disabled="expensesLoading" title="Refresh">
+            <svg :class="{ 'ptab-spin': expensesLoading }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="23,4 23,10 17,10"/><polyline points="1,20 1,14 7,14"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/>
+            </svg>
+          </button>
+          <button class="ptab__btn-add" @click="openAddExpense">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Add Expense
+          </button>
+        </div>
+      </div>
+
+      <!-- Add / Edit form -->
+      <transition name="pf-slide">
+        <div v-if="expenseForm.show" class="pf-card">
+          <div class="pf-card__head">
+            <div class="pf-card__label">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12"/><path d="M6 7h12"/><path d="M6 11h5a4 4 0 1 0 0-8"/><path d="M6 11l8 10"/></svg>
+              {{ expenseForm.id ? 'Edit Expense' : 'New Expense' }}
+            </div>
+            <button class="pf-card__close" @click="closeExpenseForm">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+          </div>
+          <div class="pf-card__body">
+            <div class="pf-field">
+              <label class="pf-label">Date <span class="pf-req">*</span></label>
+              <input v-model="expenseForm.date" type="date" class="pf-input" />
+            </div>
+            <div class="pf-field pf-field--wide">
+              <label class="pf-label">Purpose / Description <span class="pf-req">*</span></label>
+              <input
+                v-model="expenseForm.purpose"
+                class="pf-input"
+                :class="{ 'pf-input--err': expenseForm.purposeError }"
+                placeholder="e.g. Hair colour stock, Electricity bill"
+                @input="expenseForm.purposeError = ''"
+              />
+              <span v-if="expenseForm.purposeError" class="pf-err-msg">{{ expenseForm.purposeError }}</span>
+            </div>
+            <div class="pf-field">
+              <label class="pf-label">Amount (₹) <span class="pf-req">*</span></label>
+              <input v-model.number="expenseForm.amount" type="number" min="0" class="pf-input"
+                :class="{ 'pf-input--err': expenseForm.amountError }"
+                placeholder="0"
+                @input="expenseForm.amountError = ''"
+              />
+              <span v-if="expenseForm.amountError" class="pf-err-msg">{{ expenseForm.amountError }}</span>
+            </div>
+            <div class="pf-field">
+              <label class="pf-label">Category</label>
+              <select v-model="expenseForm.category" class="pf-input">
+                <option value="">Select category</option>
+                <option v-for="c in expenseCategories" :key="c" :value="c">{{ c }}</option>
+              </select>
+            </div>
+            <div class="pf-field">
+              <label class="pf-label">Paid via</label>
+              <div class="exp-pay-toggle">
+                <button type="button" class="exp-pay-opt" :class="{ 'exp-pay-opt--cash': expenseForm.paymentMode === 'Cash' }" @click="expenseForm.paymentMode = 'Cash'">Cash</button>
+                <button type="button" class="exp-pay-opt" :class="{ 'exp-pay-opt--upi': expenseForm.paymentMode === 'UPI' }" @click="expenseForm.paymentMode = 'UPI'">UPI</button>
+              </div>
+            </div>
+          </div>
+          <div class="pf-card__foot">
+            <button class="pf-btn pf-btn--ghost" @click="closeExpenseForm">Cancel</button>
+            <button class="pf-btn pf-btn--save" @click="saveExpense" :disabled="expenseForm.saving">
+              <svg v-if="expenseForm.saving" class="ptab-spin" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+              {{ expenseForm.saving ? 'Saving…' : (expenseForm.id ? 'Update' : 'Add Expense') }}
+            </button>
+          </div>
+        </div>
+      </transition>
+
+      <!-- Summary cards -->
+      <div v-if="!expensesLoading && expensesList.length" class="exp-summary">
+        <div class="exp-sum-card">
+          <div class="exp-sum-label">Total Expenses</div>
+          <div class="exp-sum-value">₹{{ expensesTotalAll.toLocaleString('en-IN') }}</div>
+        </div>
+        <div class="exp-sum-card exp-sum-card--cash">
+          <div class="exp-sum-label">Cash</div>
+          <div class="exp-sum-value">₹{{ expensesTotalCash.toLocaleString('en-IN') }}</div>
+        </div>
+        <div class="exp-sum-card exp-sum-card--upi">
+          <div class="exp-sum-label">UPI</div>
+          <div class="exp-sum-value">₹{{ expensesTotalUpi.toLocaleString('en-IN') }}</div>
+        </div>
+        <div class="exp-sum-card exp-sum-card--count">
+          <div class="exp-sum-label">Entries</div>
+          <div class="exp-sum-value">{{ expensesList.length }}</div>
+        </div>
+      </div>
+
+      <!-- Loading -->
+      <div v-if="expensesLoading" class="ptab__loading">
+        <svg class="ptab-spin" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        Loading expenses…
+      </div>
+
+      <!-- Table -->
+      <template v-else-if="expensesList.length">
+        <div class="exp-table-wrap">
+          <table class="exp-table">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Date</th>
+                <th>Purpose</th>
+                <th>Category</th>
+                <th>Mode</th>
+                <th class="exp-th--right">Amount</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(exp, i) in expensesList" :key="exp.id" class="exp-tr">
+                <td class="exp-td--muted">{{ i + 1 }}</td>
+                <td class="exp-td--date">{{ exp.date }}</td>
+                <td class="exp-td--purpose">{{ exp.purpose }}</td>
+                <td>
+                  <span v-if="exp.category" class="exp-cat-badge">{{ exp.category }}</span>
+                  <span v-else class="exp-td--muted">—</span>
+                </td>
+                <td>
+                  <span class="exp-mode-badge" :class="exp.paymentMode === 'UPI' ? 'exp-mode-badge--upi' : 'exp-mode-badge--cash'">
+                    {{ exp.paymentMode || 'Cash' }}
+                  </span>
+                </td>
+                <td class="exp-td--amount">₹{{ Number(exp.amount).toLocaleString('en-IN') }}</td>
+                <td class="exp-td--actions">
+                  <button class="pcard__btn pcard__btn--edit" @click="editExpense(exp)" title="Edit">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                    </svg>
+                  </button>
+                  <button class="pcard__btn pcard__btn--del" @click="confirmDeleteExpense(exp)" title="Delete">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                      <path d="M10 11v6"/><path d="M14 11v6"/>
+                    </svg>
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr class="exp-tfoot-row">
+                <td colspan="5" class="exp-tfoot-label">Total</td>
+                <td class="exp-td--amount exp-tfoot-total">₹{{ expensesTotalAll.toLocaleString('en-IN') }}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </template>
+
+      <!-- Empty -->
+      <div v-else class="ptab__empty">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 3h12"/><path d="M6 7h12"/><path d="M6 11h5a4 4 0 1 0 0-8"/><path d="M6 11l8 10"/></svg>
+        <p>No expenses recorded for this period.</p>
+        <button class="ptab__btn-add" @click="openAddExpense" style="margin-top:4px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+          Add first expense
+        </button>
+      </div>
+
+      <!-- Delete confirm -->
+      <transition name="modal">
+        <div v-if="expenseDeleteConfirm.show" class="del-overlay" @click.self="expenseDeleteConfirm.show = false">
+          <div class="del-dialog">
+            <div class="del-dialog__icon">
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+              </svg>
+            </div>
+            <div class="del-dialog__title">Delete Expense?</div>
+            <div class="del-dialog__msg">
+              "<strong>{{ expenseDeleteConfirm.purpose }}</strong>" (₹{{ Number(expenseDeleteConfirm.amount).toLocaleString('en-IN') }}) will be removed permanently.
+            </div>
+            <div class="del-dialog__actions">
+              <button class="pf-btn pf-btn--ghost" @click="expenseDeleteConfirm.show = false">Cancel</button>
+              <button class="pf-btn pf-btn--del" @click="deleteExpense" :disabled="expenseDeleteConfirm.deleting">
+                {{ expenseDeleteConfirm.deleting ? 'Deleting…' : 'Delete' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </div>
+
     <!-- ══════════════ INVOICE MODAL ══════════════ -->
     <teleport to="body">
       <transition name="modal">
@@ -697,6 +920,7 @@ import { useRoute } from 'vue-router'
 import { SERVICE_ALIAS_MAP } from '@/composables/useBookings'
 
 // Define API URL directly in this component
+// const API_URL = 'https://script.google.com/macros/s/AKfycbx3lXRJdgP7uHFqU82c7T0kxDPW3HEWUcB3LpyGrGlAKpMFIckpWFzuFLSDuGvfzQzDTQ/exec'
 const API_URL = 'https://script.google.com/macros/s/AKfycbx3lXRJdgP7uHFqU82c7T0kxDPW3HEWUcB3LpyGrGlAKpMFIckpWFzuFLSDuGvfzQzDTQ/exec'
 
 const route = useRoute()
@@ -1141,6 +1365,147 @@ function prefillBill({ name, phone, services }) {
     })
   }
   activeTab.value = 'billing'
+}
+
+// ── Expenses ──────────────────────────────────────────────────────────────────
+const expView        = ref('daily')   // 'daily' | 'monthly'
+const expFilterDate  = ref(new Date().toISOString().slice(0, 10))   // yyyy-mm-dd
+const expFilterMonth = ref(new Date().toISOString().slice(0, 7))    // yyyy-mm
+const expensesList   = ref([])
+const expensesLoading = ref(false)
+
+const expenseCategories = [
+  'Stock / Inventory', 'Electricity', 'Rent', 'Staff Welfare',
+  'Maintenance', 'Marketing', 'Consumables', 'Salary Advance', 'Miscellaneous'
+]
+
+const expensesTotalAll  = computed(() => expensesList.value.reduce((s, e) => s + Number(e.amount || 0), 0))
+const expensesTotalCash = computed(() => expensesList.value.filter(e => (e.paymentMode || 'Cash') === 'Cash').reduce((s, e) => s + Number(e.amount || 0), 0))
+const expensesTotalUpi  = computed(() => expensesList.value.filter(e => e.paymentMode === 'UPI').reduce((s, e) => s + Number(e.amount || 0), 0))
+
+async function loadExpenses() {
+  expensesLoading.value = true
+  try {
+    const params = expView.value === 'daily'
+      ? new URLSearchParams({ action: 'expenseGet', date: expFilterDate.value })
+      : new URLSearchParams({ action: 'expenseGet', month: expFilterMonth.value })
+    const res  = await fetch(`${API_URL}?${params}`)
+    const data = await res.json()
+    if (!data.success) throw new Error(data.error || 'Failed')
+    expensesList.value = data.expenses || []
+  } catch (err) {
+    showToast('Failed to load expenses', 'error')
+    console.error(err)
+  } finally {
+    expensesLoading.value = false
+  }
+}
+
+const expenseForm = reactive({
+  show: false,
+  id: '',
+  date: new Date().toISOString().slice(0, 10),
+  purpose: '',
+  amount: 0,
+  category: '',
+  paymentMode: 'Cash',
+  purposeError: '',
+  amountError: '',
+  saving: false,
+})
+
+function openAddExpense() {
+  expenseForm.id          = ''
+  expenseForm.date        = new Date().toISOString().slice(0, 10)
+  expenseForm.purpose     = ''
+  expenseForm.amount      = 0
+  expenseForm.category    = ''
+  expenseForm.paymentMode = 'Cash'
+  expenseForm.purposeError = ''
+  expenseForm.amountError  = ''
+  expenseForm.saving       = false
+  expenseForm.show         = true
+}
+
+function editExpense(exp) {
+  // date from sheet is dd-mm-yyyy, convert to yyyy-mm-dd for input
+  let isoDate = expenseForm.date
+  if (exp.date && exp.date.includes('-')) {
+    const parts = exp.date.split('-')
+    if (parts[0].length === 2) isoDate = `${parts[2]}-${parts[1]}-${parts[0]}`
+    else isoDate = exp.date
+  }
+  expenseForm.id          = exp.id
+  expenseForm.date        = isoDate
+  expenseForm.purpose     = exp.purpose
+  expenseForm.amount      = Number(exp.amount) || 0
+  expenseForm.category    = exp.category || ''
+  expenseForm.paymentMode = exp.paymentMode || 'Cash'
+  expenseForm.purposeError = ''
+  expenseForm.amountError  = ''
+  expenseForm.saving       = false
+  expenseForm.show         = true
+}
+
+function closeExpenseForm() { expenseForm.show = false }
+
+async function saveExpense() {
+  expenseForm.purposeError = ''
+  expenseForm.amountError  = ''
+  if (!expenseForm.purpose.trim()) { expenseForm.purposeError = 'Purpose is required'; return }
+  if (!expenseForm.amount || expenseForm.amount <= 0) { expenseForm.amountError = 'Enter a valid amount'; return }
+
+  expenseForm.saving = true
+  try {
+    const params = new URLSearchParams({
+      action:      'expenseSave',
+      id:          expenseForm.id || String(Date.now()),
+      date:        expenseForm.date,
+      purpose:     expenseForm.purpose.trim(),
+      amount:      expenseForm.amount,
+      category:    expenseForm.category,
+      paymentMode: expenseForm.paymentMode,
+    })
+    const res  = await fetch(`${API_URL}?${params}`)
+    const data = await res.json()
+    if (!data.success) throw new Error(data.error || 'Save failed')
+    expenseForm.show = false
+    await loadExpenses()
+    showToast(expenseForm.id ? 'Expense updated!' : 'Expense added!', 'success')
+  } catch (err) {
+    showToast('Failed to save expense', 'error')
+    console.error(err)
+  } finally {
+    expenseForm.saving = false
+  }
+}
+
+const expenseDeleteConfirm = reactive({ show: false, id: '', purpose: '', amount: 0, deleting: false })
+
+function confirmDeleteExpense(exp) {
+  expenseDeleteConfirm.id       = exp.id
+  expenseDeleteConfirm.purpose  = exp.purpose
+  expenseDeleteConfirm.amount   = exp.amount
+  expenseDeleteConfirm.deleting = false
+  expenseDeleteConfirm.show     = true
+}
+
+async function deleteExpense() {
+  expenseDeleteConfirm.deleting = true
+  try {
+    const params = new URLSearchParams({ action: 'expenseDelete', id: expenseDeleteConfirm.id })
+    const res  = await fetch(`${API_URL}?${params}`)
+    const data = await res.json()
+    if (!data.success) throw new Error(data.error || 'Delete failed')
+    expenseDeleteConfirm.show = false
+    await loadExpenses()
+    showToast('Expense deleted', 'success')
+  } catch (err) {
+    showToast('Failed to delete expense', 'error')
+    console.error(err)
+  } finally {
+    expenseDeleteConfirm.deleting = false
+  }
 }
 
 // Expose prefillBill for parent (App.vue can call this via ref)
@@ -2268,5 +2633,111 @@ onMounted(() => {
   border-color: #6c63ff;
   color: #553c9a;
 }
+
+/* ══════════════ EXPENSES TAB ══════════════ */
+.exptab { padding: 0 0 32px; }
+
+.exptab__topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  padding: 16px 0 14px;
+  border-bottom: 1px solid var(--color-border, #ece8e2);
+  margin-bottom: 16px;
+}
+.exptab__topbar-left { display: flex; align-items: baseline; gap: 10px; }
+.exptab__title { font-size: 15px; font-weight: 700; color: var(--color-text, #1a1a1a); }
+.exptab__subtitle { display: flex; align-items: center; gap: 6px; }
+.exptab__count {
+  font-size: 12px; background: var(--color-accent-light, #f5ede4);
+  color: var(--color-accent, #8B6F47);
+  padding: 2px 8px; border-radius: 99px;
+}
+.exptab__topbar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+.exp-view-toggle {
+  display: flex; border: 1.5px solid var(--color-border, #e0ddd8);
+  border-radius: 8px; overflow: hidden;
+}
+.exp-view-btn {
+  padding: 7px 14px; font-size: 12px; font-weight: 500;
+  background: none; border: none; cursor: pointer;
+  color: var(--color-text-muted, #888);
+  transition: background 0.15s, color 0.15s;
+}
+.exp-view-btn--active { background: var(--color-accent, #8B6F47); color: #fff; }
+
+.exp-date-input {
+  padding: 7px 10px; border: 1.5px solid var(--color-border, #e0ddd8);
+  border-radius: 8px; font-size: 12.5px;
+  background: var(--color-surface, #fff);
+  color: var(--color-text, #1a1a1a); outline: none;
+  transition: border-color 0.15s;
+}
+.exp-date-input:focus { border-color: var(--color-accent, #8B6F47); }
+
+.exp-pay-toggle { display: flex; gap: 6px; }
+.exp-pay-opt {
+  padding: 7px 18px; border-radius: 8px; font-size: 13px;
+  font-weight: 500; cursor: pointer;
+  border: 1.5px solid var(--color-border, #e0e0e0);
+  background: var(--color-surface-2, #f9f9f9);
+  color: var(--color-text-muted, #777);
+  transition: all 0.15s;
+}
+.exp-pay-opt--cash { background: #f0fff4; border-color: #38a169; color: #276749; }
+.exp-pay-opt--upi  { background: #f5f3ff; border-color: #6c63ff; color: #553c9a; }
+
+.exp-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px; margin-bottom: 18px;
+}
+.exp-sum-card {
+  background: var(--color-surface, #fff);
+  border: 1.5px solid var(--color-border, #ece8e2);
+  border-radius: 12px; padding: 14px 16px;
+}
+.exp-sum-card--cash  { border-color: #c6f6d5; background: #f0fff4; }
+.exp-sum-card--upi   { border-color: #c4b5fd; background: #f5f3ff; }
+.exp-sum-card--count { border-color: var(--color-accent-light, #f5ede4); background: var(--color-accent-light, #fdf7f2); }
+.exp-sum-label { font-size: 11px; color: var(--color-text-muted, #888); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.exp-sum-value { font-size: 18px; font-weight: 700; color: var(--color-text, #1a1a1a); }
+
+.exp-table-wrap {
+  background: var(--color-surface, #fff);
+  border: 1px solid var(--color-border, #ece8e2);
+  border-radius: 12px; overflow: hidden;
+}
+.exp-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.exp-table thead th {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--color-text-muted, #999);
+  padding: 10px 12px; border-bottom: 1.5px solid var(--color-border, #ece8e2);
+  text-align: left; background: var(--color-surface-2, #fafafa); white-space: nowrap;
+}
+.exp-th--right { text-align: right; }
+.exp-tr { transition: background 0.12s; }
+.exp-tr:hover { background: var(--color-surface-2, #fafaf8); }
+.exp-tr td { padding: 10px 12px; border-bottom: 1px solid var(--color-border, #f5f2ef); vertical-align: middle; }
+.exp-td--muted   { color: var(--color-text-muted, #aaa); font-size: 12px; }
+.exp-td--date    { white-space: nowrap; font-size: 12.5px; color: var(--color-text-muted, #666); }
+.exp-td--purpose { font-weight: 500; color: var(--color-text, #1a1a1a); }
+.exp-td--amount  { text-align: right; font-weight: 600; color: var(--color-accent, #8B6F47); white-space: nowrap; }
+.exp-td--actions { text-align: right; white-space: nowrap; }
+
+.exp-cat-badge {
+  display: inline-block; font-size: 11px;
+  padding: 2px 8px; border-radius: 99px;
+  background: var(--color-accent-light, #f5ede4);
+  color: var(--color-accent, #8B6F47);
+}
+.exp-mode-badge { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 99px; }
+.exp-mode-badge--cash { background: #f0fff4; color: #276749; }
+.exp-mode-badge--upi  { background: #f5f3ff; color: #553c9a; }
+
+.exp-tfoot-row { background: var(--color-surface-2, #fafafa); }
+.exp-tfoot-row td { border-top: 2px solid var(--color-border, #ece8e2); border-bottom: none; padding: 10px 12px; }
+.exp-tfoot-label { font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted, #888); }
+.exp-tfoot-total { text-align: right; font-size: 15px; font-weight: 800; color: var(--color-accent, #8B6F47); }
 
 </style>
