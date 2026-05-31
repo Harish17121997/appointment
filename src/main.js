@@ -7,6 +7,7 @@ import Appointments from './views/Appointments.vue'
 import Staff       from './views/Staff.vue'
 import Services    from './views/Services.vue'
 import Report    from './views/Report.vue'
+import Campaign   from './views/Campaign.vue'
 import './style.css'
 
 // ── Routes ──────────────────────────────────────────────────────────────────
@@ -18,6 +19,7 @@ const routes = [
   { path: '/staff',        component: Staff,        meta: { title: 'Staff' } },
   { path: '/services',     component: Services,     meta: { title: 'Services & Billing' } },
   { path: '/reports',      component: Report,      meta: { title: 'Reports' } },
+  { path: '/campaign',     component: Campaign,     meta: { title: 'Campaign' } },
   { path: '/:pathMatch(.*)*', redirect: '/login' },
 ]
 
