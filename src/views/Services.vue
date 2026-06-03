@@ -957,6 +957,8 @@ const allServicesFlat = [
       { name: "Women's Hair Wash & Blow Dry", price: 600 },
       { name: "Women's Treatment Hair Wash & Blow Dry", price: 800 },
       { name: "Women's Hair Trim", price: 600 },
+      { name: "Schwarzkopf Hair Highlights", price: 7500 },
+
     ]
   },
   {
