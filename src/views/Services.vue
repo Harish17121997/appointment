@@ -958,7 +958,6 @@ const allServicesFlat = [
       { name: "Women's Treatment Hair Wash & Blow Dry", price: 800 },
       { name: "Women's Hair Trim", price: 600 },
       { name: "Schwarzkopf Hair Highlights", price: 7500 },
-
     ]
   },
   {
@@ -991,6 +990,7 @@ const allServicesFlat = [
       { name: 'Root Touch Up Loreal upto 1 inch', price: 1200 },
       { name: 'Root Touch Up Schwarzkopf', price: 1400 },
       { name: 'Root Touch Up Schwarzkopf Ammonia Free', price: 1600 },
+      { name: "Oxy Bleach", price: 600 },
     ]
   },
   {
