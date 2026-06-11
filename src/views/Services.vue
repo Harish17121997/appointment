@@ -33,19 +33,40 @@
 
     <!-- ══════════════ SERVICES MENU TAB ══════════════ -->
     <div v-if="activeTab === 'menu'" class="menu-tab">
-      <div class="menu-controls">
+      <div class="menu-topbar">
         <div class="search-wrap">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
           <input v-model="searchQuery" type="text" placeholder="Search services…" class="search-input" />
         </div>
+        <div class="menu-actions">
+          <button class="btn-refresh-svc" @click="loadServices" :disabled="servicesLoading" title="Refresh services">
+            <svg :class="{ 'spin-icon': servicesLoading }" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="23,4 23,10 17,10"/>
+              <polyline points="1,20 1,14 7,14"/>
+              <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/>
+              <path d="M20.49 15a9 9 0 0 1-14.85 3.36L1 14"/>
+            </svg>
+          </button>
+          <button class="btn-add-svc" @click="openAddService">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Add Service
+          </button>
+        </div>
+      </div>
+      <div class="menu-controls">
         <div class="category-pills">
           <button v-for="cat in allCategories" :key="cat" class="pill"
             :class="{ 'pill--active': selectedCategory === cat }"
             @click="selectedCategory = cat">{{ cat }}</button>
         </div>
       </div>
+
+      <div v-if="servicesLoading && services.length === 0" class="svc-loading">Loading services…</div>
+      <div v-if="servicesError" class="svc-error">{{ servicesError }}</div>
 
       <div v-for="cat in visibleCategories" :key="cat.name" class="category-section">
         <div class="category-header">
@@ -54,22 +75,40 @@
           <span class="category-count">{{ cat.services.length }} services</span>
         </div>
         <div class="services-grid">
-          <div v-for="svc in cat.services" :key="svc.name" class="service-card" @click="quickAddToBill(svc)">
-            <div class="service-card__name">{{ svc.name }}</div>
+          <div v-for="svc in cat.services" :key="svc.id || svc.name" class="service-card">
+            <div class="service-card__name" @click="quickAddToBill(svc)">{{ svc.name }}</div>
             <div class="service-card__footer">
               <span class="service-card__price">₹{{ svc.price.toLocaleString('en-IN') }}</span>
-              <button class="add-btn" @click.stop="quickAddToBill(svc)" title="Add to bill">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                  <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-                </svg>
-              </button>
+              <div class="service-card__actions">
+                <button class="svc-icon-btn svc-icon-btn--edit" @click.stop="editService({ ...svc, category: cat.name })" title="Edit">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 1 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+                  </svg>
+                </button>
+                <button class="svc-icon-btn svc-icon-btn--del" @click.stop="confirmDeleteService(svc)" title="Delete">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/>
+                  </svg>
+                </button>
+                <button class="add-btn" @click.stop="quickAddToBill(svc)" title="Add to bill">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                  </svg>
+                </button>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <div v-if="visibleCategories.length === 0" class="empty-state">
-        No services found for "{{ searchQuery }}"
+      <div v-if="visibleCategories.length === 0 && !servicesLoading" class="empty-state">
+        <template v-if="services.length === 0">
+          No services yet. Click "Add Service" to create your first one.
+        </template>
+        <template v-else>
+          No services found for "{{ searchQuery }}"
+        </template>
       </div>
     </div>
 
@@ -906,6 +945,90 @@
       </transition>
     </teleport>
 
+    <!-- ══════════════ ADD / EDIT SERVICE MODAL ══════════════ -->
+    <teleport to="body">
+      <transition name="svc-modal-fade">
+        <div v-if="serviceForm.show" class="svc-modal-backdrop" @click.self="closeServiceForm">
+          <div class="svc-modal">
+            <div class="svc-modal__header">
+              <h3 class="svc-modal__title">{{ serviceForm.id ? 'Edit Service' : 'Add Service' }}</h3>
+              <button class="svc-modal__close" @click="closeServiceForm" aria-label="Close">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div class="svc-modal__body">
+              <div class="svc-field">
+                <label class="svc-field__label">Service Name <span class="svc-field__req">*</span></label>
+                <input
+                  v-model="serviceForm.name"
+                  type="text"
+                  class="svc-field__input"
+                  :class="{ 'svc-field__input--err': serviceForm.nameError }"
+                  placeholder="e.g. Hair Spa - Long Length"
+                  @input="serviceForm.nameError = ''"
+                />
+                <div v-if="serviceForm.nameError" class="svc-field__err">{{ serviceForm.nameError }}</div>
+              </div>
+              <div class="svc-field-row">
+                <div class="svc-field">
+                  <label class="svc-field__label">Price (₹) <span class="svc-field__req">*</span></label>
+                  <input v-model.number="serviceForm.price" type="number" min="0" class="svc-field__input" placeholder="0" />
+                </div>
+                <div class="svc-field">
+                  <label class="svc-field__label">Category</label>
+                  <input
+                    v-model="serviceForm.category"
+                    list="svc-category-list"
+                    class="svc-field__input"
+                    placeholder="Type or pick a category"
+                  />
+                  <datalist id="svc-category-list">
+                    <option v-for="c in existingCategoryNames" :key="c" :value="c"></option>
+                  </datalist>
+                </div>
+              </div>
+            </div>
+            <div class="svc-modal__footer">
+              <button class="svc-btn svc-btn--ghost" @click="closeServiceForm" :disabled="serviceForm.saving">Cancel</button>
+              <button class="svc-btn svc-btn--primary" @click="saveService" :disabled="serviceForm.saving">
+                {{ serviceForm.saving ? 'Saving…' : (serviceForm.id ? 'Update Service' : 'Add Service') }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </teleport>
+
+    <!-- ══════════════ DELETE SERVICE CONFIRM ══════════════ -->
+    <teleport to="body">
+      <transition name="svc-modal-fade">
+        <div v-if="serviceDeleteConfirm.show" class="svc-modal-backdrop" @click.self="serviceDeleteConfirm.show = false">
+          <div class="svc-modal svc-modal--sm">
+            <div class="svc-modal__body svc-modal__body--center">
+              <div class="svc-modal__icon-warn">
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6l-2 14a2 2 0 0 1-2 2H9a2 2 0 0 1-2-2L5 6"/>
+                </svg>
+              </div>
+              <div class="svc-modal__heading">Delete this service?</div>
+              <div class="svc-modal__text">
+                "{{ serviceDeleteConfirm.name }}" will be permanently removed.
+              </div>
+            </div>
+            <div class="svc-modal__footer svc-modal__footer--center">
+              <button class="svc-btn svc-btn--ghost" @click="serviceDeleteConfirm.show = false" :disabled="serviceDeleteConfirm.deleting">Cancel</button>
+              <button class="svc-btn svc-btn--danger" @click="deleteService" :disabled="serviceDeleteConfirm.deleting">
+                {{ serviceDeleteConfirm.deleting ? 'Deleting…' : 'Delete' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </transition>
+    </teleport>
+
     <!-- Toast -->
     <transition name="toast">
       <div v-if="toast.show" class="toast" :class="`toast--${toast.type}`">{{ toast.message }}</div>
@@ -921,6 +1044,7 @@ import { SERVICE_ALIAS_MAP } from '@/composables/useBookings'
 
 // Define API URL directly in this component
 // const API_URL = 'https://script.google.com/macros/s/AKfycbx3lXRJdgP7uHFqU82c7T0kxDPW3HEWUcB3LpyGrGlAKpMFIckpWFzuFLSDuGvfzQzDTQ/exec'
+// const API_URL = 'https://script.google.com/macros/s/AKfycbx3lXRJdgP7uHFqU82c7T0kxDPW3HEWUcB3LpyGrGlAKpMFIckpWFzuFLSDuGvfzQzDTQ/exec'
 const API_URL = 'https://script.google.com/macros/s/AKfycbx3lXRJdgP7uHFqU82c7T0kxDPW3HEWUcB3LpyGrGlAKpMFIckpWFzuFLSDuGvfzQzDTQ/exec'
 
 const route = useRoute()
@@ -929,150 +1053,67 @@ const activeTab = ref('menu')
 const searchQuery = ref('')
 const selectedCategory = ref('All')
 
-// ── All Services Data ──
-const allServicesFlat = [
-  {
-    name: 'Hair',
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>`,
-    services: [
-      { name: 'Botorepair Treatment Short Hair', price: 3999 },
-      { name: 'Basic Hair Spa - Long Length', price: 1600 },
-      { name: 'Basic Hair Spa - Medium Length', price: 999 },
-      { name: 'Basic Hair Spa - Short Length', price: 999 },
-      { name: 'Botoliss - Long Length', price: 9000 },
-      { name: 'Botoliss - Medium Length', price: 6000 },
-      { name: 'Botoliss Short', price: 3999 },
-      { name: 'Botorepair Treatment Long Length', price: 9999 },
-      { name: 'Botorepair Treatment Medium Length', price: 6999 },
-      { name: 'Hair Styling - Basic Up Do', price: 1000 },
-      { name: 'Hair Styling - Ironing', price: 800 },
-      { name: 'Hair Styling - Tongs', price: 1000 },
-      { name: 'Luxury Hair Spa - Long Length', price: 2100 },
-      { name: 'Luxury Hair Spa - Medium Length', price: 1500 },
-      { name: 'Luxury Hair Spa - Short Length', price: 1200 },
-      { name: 'Dandruff Hair Spa', price: 1500 },
-      { name: 'Shea Hair Spa', price: 3000 },
-      { name: "Women's Express Filler Hair Wash & Blow Dry", price: 1200 },
-      { name: "Women's Hair Wash & Blast Dry", price: 500 },
-      { name: "Women's Hair Wash & Blow Dry", price: 600 },
-      { name: "Women's Treatment Hair Wash & Blow Dry", price: 800 },
-      { name: "Women's Hair Trim", price: 600 },
-      { name: "Schwarzkopf Hair Highlights", price: 7500 },
-    ]
-  },
-  {
-    name: "Men's Grooming",
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
-    services: [
-      { name: "Men's Hair Color", price: 1200 },
-      { name: "Men's Hair Color Ammonia Free", price: 1400 },
-      { name: "Men's Hair Spa", price: 1000 },
-      { name: "Men's Hair Wash", price: 300 },
-      { name: "Men's Premium Hair Spa", price: 1200 },
-      { name: "Men's Haircut", price: 300 },
-      { name: "Men's Shaving", price: 200 },
-    ]
-  },
-  {
-    name: 'Hair Color',
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>`,
-    services: [
-      { name: 'Balayage Hair Colour', price: 4500 },
-      { name: 'Balayage Long Length', price: 6500 },
-      { name: 'Global Hair Color Loreal Long Length', price: 7500 },
-      { name: 'Global Hair Color Loreal Medium Length', price: 4500 },
-      { name: 'Global Hair Color Schwarzkopf Long Length', price: 8500 },
-      { name: 'Global Hair Color Schwarzkopf Medium Length', price: 5500 },
-      { name: 'Global Hair Color Schwarzkopf Short Hair', price: 3000 },
-      { name: 'Global Hair Color Short Length Loreal', price: 2000 },
-      { name: 'Global Highlights', price: 4500 },
-      { name: 'Root Touchup Loreal Ammonia Free', price: 1400 },
-      { name: 'Root Touch Up Loreal upto 1 inch', price: 1200 },
-      { name: 'Root Touch Up Schwarzkopf', price: 1400 },
-      { name: 'Root Touch Up Schwarzkopf Ammonia Free', price: 1600 },
-      { name: "Oxy Bleach", price: 600 },
-    ]
-  },
-  {
-    name: 'Skin',
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
-    services: [
-      { name: 'Acne Treatment', price: 1500 },
-      { name: 'D-Tan', price: 599 },
-      { name: 'Hydration Booster Therapy', price: 2800 },
-      { name: 'Body Polishing', price: 3000 },
-      { name: 'Arms Polishing', price: 800 },
-      { name: 'Legs Polishing', price: 1000 },
-      { name: 'Back Polishing', price: 800 },
-    ]
-  },
-  {
-    name: 'Facial',
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg>`,
-    services: [
-      { name: 'Bridal Facial O3 Professional', price: 3999 },
-      { name: 'O3 Shine & Glow', price: 3000 },
-      { name: 'Kanpeki Luxury Facial', price: 2500 },
-      { name: 'Fruit Facial', price: 1000 },
-      { name: 'Gold Facial', price: 1499 },
-      { name: 'Fruit Clean Up', price: 800 },
-      { name: 'Kanpeki Cleanup', price: 1200 },
-    ]
-  },
-  {
-    name: 'Massage',
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><path d="M21 12c.552 0 1-.449 1-1V5c0-.551-.448-1-1-1H3c-.552 0-1 .449-1 1v6c0 .551.448 1 1 1h9l3 3V12h6z"/></svg>`,
-    services: [
-      { name: 'Basic Manicure', price: 700 },
-      { name: 'Luxury Manicure', price: 1200 },
-      { name: 'Basic Pedicure', price: 999 },
-      { name: 'Luxury Pedicure', price: 1500 },
-      { name: 'O3 Pedicure', price: 3000 },
-      { name: 'Foot Massage', price: 600 },
-      { name: 'Head Massage', price: 600 },
-      { name: 'Scientific Combing', price: 500 },
-      { name: 'Head Massage with Wash', price: 900 },
-      { name: 'Back Massage', price: 600 },
-    ]
-  },
-  {
-    name: 'Waxing',
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`,
-    services: [
-      { name: 'Back Wax', price: 500 },
-      { name: 'Brazilian Wax - Upper Lips', price: 50 },
-      { name: 'Brazilian Wax - Side Locks', price: 150 },
-      { name: 'Brazilian Wax - Bikini', price: 1300 },
-      { name: 'Brazilian Wax - Eyebrows', price: 250 },
-      { name: 'Full Body Wax', price: 2999 },
-      { name: 'Rica Wax - Full Hands', price: 550 },
-      { name: 'Rica Wax - Full Legs', price: 750 },
-      { name: 'Rica Wax - Half Leg', price: 450 },
-      { name: 'Rica Wax - Hands + Underarms', price: 600 },
-      { name: 'Rica Wax - Stomach', price: 300 },
-      { name: 'Rica Wax - Underarms', price: 150 },
-    ]
-  },
-  {
-    name: 'Threading',
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
-    services: [
-      { name: 'Threading Chin', price: 50 },
-      { name: 'Threading Eyebrows', price: 100 },
-      { name: 'Threading Full Face', price: 250 },
-      { name: 'Threading Side Locks', price: 80 },
-      { name: 'Threading Upper Lips', price: 50 },
-    ]
-  },
-  {
-    name: 'Kids',
-    icon: `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
-    services: [
-      { name: 'Kids Haircut - Boys', price: 300 },
-      { name: 'Kids Haircut - Girls', price: 400 },
-    ]
-  },
-]
+// ── Category Icons (kept client-side — sheet only stores name/price/category) ──
+const CATEGORY_ICONS = {
+  'Hair':            `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z"/></svg>`,
+  "Men's Grooming":  `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+  'Hair Color':      `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>`,
+  'Skin':            `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+  'Facial':          `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg>`,
+  'Massage':         `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4"/><path d="M21 12c.552 0 1-.449 1-1V5c0-.551-.448-1-1-1H3c-.552 0-1 .449-1 1v6c0 .551.448 1 1 1h9l3 3V12h6z"/></svg>`,
+  'Waxing':          `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>`,
+  'Threading':       `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>`,
+  'Kids':            `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
+}
+const DEFAULT_ICON = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/></svg>`
+
+// ── Services (loaded from sheet) ──
+const services = ref([])
+const servicesLoading = ref(false)
+const servicesError = ref('')
+
+async function loadServices() {
+  servicesLoading.value = true
+  servicesError.value = ''
+  try {
+    const res  = await fetch(`${API_URL}?action=serviceGet`)
+    const data = await res.json()
+    if (!data.success) throw new Error(data.error || 'Failed')
+    services.value = data.services || []
+  } catch (err) {
+    servicesError.value = 'Could not load services'
+    console.error('Service fetch error:', err)
+  } finally {
+    servicesLoading.value = false
+  }
+}
+
+// Group flat services into the same shape as before: [{ name, icon, services: [...] }]
+const allServicesFlat = computed(() => {
+  const groups = {}
+  services.value.forEach(svc => {
+    const cat = svc.category || 'Other'
+    if (!groups[cat]) {
+      groups[cat] = {
+        name: cat,
+        icon: CATEGORY_ICONS[cat] || DEFAULT_ICON,
+        services: [],
+      }
+    }
+    groups[cat].services.push({
+      id:    svc.id,
+      name:  svc.name,
+      price: Number(svc.price) || 0,
+    })
+  })
+  // Sort categories alphabetically; keep "Hair" first if present
+  const order = Object.keys(groups).sort((a, b) => {
+    if (a === 'Hair') return -1
+    if (b === 'Hair') return 1
+    return a.localeCompare(b)
+  })
+  return order.map(k => groups[k])
+})
 
 // ── Staff list (fetched directly — names only, no attendance/payment overhead) ─
 const staffList = ref([])
@@ -1277,18 +1318,122 @@ function handleProductClickOutside(e) {
   }
 }
 
+// ── Service Management (Admin) ────────────────────────────────────────────────
+const serviceForm = reactive({
+  show: false,
+  id: '',
+  name: '',
+  price: 0,
+  category: '',
+  nameError: '',
+  saving: false,
+})
+
+const serviceDeleteConfirm = reactive({
+  show: false,
+  id: '',
+  name: '',
+  deleting: false,
+})
+
+// List of existing categories — used for the datalist in the form
+const existingCategoryNames = computed(() =>
+  [...new Set(services.value.map(s => s.category).filter(Boolean))].sort()
+)
+
+function openAddService() {
+  serviceForm.id        = ''
+  serviceForm.name      = ''
+  serviceForm.price     = 0
+  serviceForm.category  = ''
+  serviceForm.nameError = ''
+  serviceForm.saving    = false
+  serviceForm.show      = true
+}
+
+function editService(s) {
+  serviceForm.id        = s.id
+  serviceForm.name      = s.name
+  serviceForm.price     = Number(s.price) || 0
+  serviceForm.category  = s.category || ''
+  serviceForm.nameError = ''
+  serviceForm.saving    = false
+  serviceForm.show      = true
+}
+
+function closeServiceForm() {
+  serviceForm.show = false
+}
+
+async function saveService() {
+  if (!serviceForm.name.trim()) {
+    serviceForm.nameError = 'Service name is required'
+    return
+  }
+  serviceForm.saving = true
+  try {
+    const params = new URLSearchParams({
+      action:   'serviceSave',
+      id:       serviceForm.id || String(Date.now()),
+      name:     serviceForm.name.trim(),
+      price:    serviceForm.price || 0,
+      category: serviceForm.category.trim(),
+    })
+    const res  = await fetch(`${API_URL}?${params}`)
+    const data = await res.json()
+    if (!data.success) throw new Error(data.error || 'Save failed')
+    serviceForm.show = false
+    await loadServices()
+    showToast(serviceForm.id ? 'Service updated!' : 'Service added!', 'success')
+  } catch (err) {
+    showToast('Failed to save service', 'error')
+    console.error(err)
+  } finally {
+    serviceForm.saving = false
+  }
+}
+
+function confirmDeleteService(s) {
+  serviceDeleteConfirm.id       = s.id
+  serviceDeleteConfirm.name     = s.name
+  serviceDeleteConfirm.deleting = false
+  serviceDeleteConfirm.show     = true
+}
+
+async function deleteService() {
+  serviceDeleteConfirm.deleting = true
+  try {
+    const params = new URLSearchParams({
+      action: 'serviceDelete',
+      id:     serviceDeleteConfirm.id,
+    })
+    const res  = await fetch(`${API_URL}?${params}`)
+    const data = await res.json()
+    if (!data.success) throw new Error(data.error || 'Delete failed')
+    serviceDeleteConfirm.show = false
+    await loadServices()
+    showToast('Service deleted', 'success')
+  } catch (err) {
+    showToast('Failed to delete service', 'error')
+    console.error(err)
+  } finally {
+    serviceDeleteConfirm.deleting = false
+  }
+}
+
 onMounted(() => {
   document.addEventListener('mousedown', handleProductClickOutside)
   loadStaffNames()
+  loadServices()
 })
 onUnmounted(() => {
   document.removeEventListener('mousedown', handleProductClickOutside)
 })
 
-const allCategories = computed(() => ['All', ...allServicesFlat.map(c => c.name)])
+const allCategories = computed(() => ['All', ...allServicesFlat.value.map(c => c.name)])
 
 const visibleCategories = computed(() => {
-  return allServicesFlat
+  return allServicesFlat.value
     .filter(cat => selectedCategory.value === 'All' || cat.name === selectedCategory.value)
     .map(cat => ({
       ...cat,
@@ -1320,7 +1465,7 @@ const newItem = reactive({
 function resolveService(rawName) {
   const key = rawName.trim().toLowerCase()
   if (!key) return null
-  const catalogue = allServicesFlat.flatMap(cat => cat.services)
+  const catalogue = allServicesFlat.value.flatMap(cat => cat.services)
 
   // TIER 1 — exact (case-insensitive)
   const exact = catalogue.find(s => s.name.toLowerCase() === key)
@@ -1514,7 +1659,7 @@ async function deleteExpense() {
 defineExpose({ prefillBill })
 
 function onServiceSelect() {
-  for (const cat of allServicesFlat) {
+  for (const cat of allServicesFlat.value) {
     const svc = cat.services.find(s => s.name === newItem.serviceName)
     if (svc) { newItem.rate = svc.price; break }
   }
@@ -1870,6 +2015,330 @@ onMounted(() => {
   background: var(--color-accent, #8B6F47);
   color: white; border-color: var(--color-accent, #8B6F47);
 }
+
+/* ══════════════ SERVICE MANAGEMENT (Add / Edit / Delete / Refresh) ══════════════ */
+.menu-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+.menu-topbar .search-wrap {
+  flex: 1;
+  min-width: 240px;
+  max-width: 480px;
+}
+
+.menu-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.btn-add-svc {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  border-radius: 8px;
+  background: #8B6F47;
+  color: #ffffff;
+  border: none;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+}
+.btn-add-svc svg { stroke: #ffffff; }
+.btn-add-svc:hover {
+  background: #6f5736;
+  box-shadow: 0 2px 6px rgba(139, 111, 71, 0.25);
+}
+.btn-add-svc:active { transform: scale(0.97); }
+
+.btn-refresh-svc {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1.5px solid #e0ddd8;
+  background: #ffffff;
+  color: #666666;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.btn-refresh-svc:hover:not(:disabled) {
+  border-color: #8B6F47;
+  color: #8B6F47;
+  background: #faf6f0;
+}
+.btn-refresh-svc:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Service card edit / delete icon buttons */
+.service-card__actions {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}
+.svc-icon-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid #e0ddd8;
+  background: #ffffff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s;
+}
+.svc-icon-btn--edit { color: #4a5568; }
+.svc-icon-btn--edit:hover { background: #f7fafc; border-color: #4a5568; }
+.svc-icon-btn--del { color: #e53e3e; }
+.svc-icon-btn--del:hover { background: #fff5f5; border-color: #e53e3e; }
+
+/* Loading + error states */
+.svc-loading {
+  padding: 24px;
+  text-align: center;
+  color: #888888;
+  font-size: 14px;
+}
+.svc-error {
+  padding: 12px 16px;
+  margin: 12px 0;
+  background: #fff5f5;
+  border: 1px solid #fecaca;
+  color: #c53030;
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+/* ══════════════ SERVICE MODAL (Add / Edit / Delete confirm) ══════════════ */
+.svc-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(20, 20, 25, 0.55);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.svc-modal {
+  background: #ffffff;
+  border-radius: 14px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(139, 111, 71, 0.15);
+}
+.svc-modal--sm { max-width: 380px; }
+
+.svc-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 22px;
+  background: linear-gradient(135deg, #faf8f5 0%, #f5ede4 100%);
+  border-bottom: 1px solid #e8ddd2;
+}
+.svc-modal__title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: #8B6F47;
+}
+.svc-modal__close {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  border: 1px solid rgba(139, 111, 71, 0.25);
+  background: rgba(255, 255, 255, 0.7);
+  color: #8B6F47;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s;
+  padding: 0;
+}
+.svc-modal__close:hover { background: #ffffff; }
+
+.svc-modal__body {
+  padding: 22px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.svc-modal__body--center {
+  text-align: center;
+  align-items: center;
+  padding: 28px 22px 18px;
+}
+
+.svc-modal__icon-warn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #fff5f5;
+  border: 1.5px solid #fecaca;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+  color: #e53e3e;
+}
+.svc-modal__heading {
+  font-size: 17px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 6px;
+}
+.svc-modal__text {
+  font-size: 13px;
+  color: #666666;
+  line-height: 1.5;
+}
+
+.svc-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 22px;
+  border-top: 1px solid #f0f0f0;
+  background: #fafafa;
+}
+.svc-modal__footer--center { justify-content: center; }
+
+/* Form fields */
+.svc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+.svc-field-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.svc-field__label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #777777;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.svc-field__req { color: #e53e3e; }
+.svc-field__input {
+  padding: 10px 13px;
+  border: 1.5px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 14px;
+  background: #ffffff;
+  color: #1a1a1a;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  width: 100%;
+  box-sizing: border-box;
+}
+.svc-field__input:focus {
+  border-color: #8B6F47;
+  box-shadow: 0 0 0 3px rgba(139, 111, 71, 0.10);
+}
+.svc-field__input--err { border-color: #e53e3e !important; }
+.svc-field__err { font-size: 11.5px; color: #e53e3e; }
+
+/* Modal buttons */
+.svc-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid #e0e0e0;
+  background: #ffffff;
+  color: #666666;
+  transition: background 0.15s, opacity 0.15s, border-color 0.15s;
+  white-space: nowrap;
+  min-width: 90px;
+}
+.svc-btn:hover:not(:disabled) { background: #f5f5f5; }
+.svc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.svc-btn--ghost { color: #666666; }
+
+.svc-btn--primary {
+  background: #8B6F47;
+  color: #ffffff;
+  border-color: #8B6F47;
+  font-weight: 600;
+}
+.svc-btn--primary:hover:not(:disabled) {
+  background: #6f5736;
+  border-color: #6f5736;
+}
+
+.svc-btn--danger {
+  background: #e53e3e;
+  color: #ffffff;
+  border-color: #e53e3e;
+  font-weight: 600;
+}
+.svc-btn--danger:hover:not(:disabled) {
+  background: #c53030;
+  border-color: #c53030;
+}
+
+/* Modal transition */
+.svc-modal-fade-enter-active,
+.svc-modal-fade-leave-active {
+  transition: opacity 0.18s ease;
+}
+.svc-modal-fade-enter-active .svc-modal,
+.svc-modal-fade-leave-active .svc-modal {
+  transition: transform 0.18s ease, opacity 0.18s ease;
+}
+.svc-modal-fade-enter-from,
+.svc-modal-fade-leave-to { opacity: 0; }
+.svc-modal-fade-enter-from .svc-modal,
+.svc-modal-fade-leave-to .svc-modal {
+  transform: scale(0.96) translateY(-8px);
+  opacity: 0;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 520px) {
+  .svc-modal-backdrop { padding: 12px; }
+  .svc-modal__body { padding: 18px; }
+  .svc-modal__footer { padding: 12px 18px; }
+  .svc-field-row { gap: 14px; }
+  .svc-field-row .svc-field { flex: 1 1 100%; }
+}
+
 
 /* ── Category Sections ── */
 .category-section { margin-bottom: 36px; }
