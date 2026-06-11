@@ -2235,6 +2235,7 @@ onMounted(() => {
   gap: 6px;
   flex: 1;
   min-width: 0;
+  
 }
 .svc-field-row {
   display: flex;
