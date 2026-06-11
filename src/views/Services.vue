@@ -1424,7 +1424,6 @@ async function deleteService() {
 onMounted(() => {
   document.addEventListener('mousedown', handleProductClickOutside)
   loadStaffNames()
-  loadServices()
 })
 onUnmounted(() => {
   document.removeEventListener('mousedown', handleProductClickOutside)
@@ -1951,7 +1950,13 @@ function showToast(message, type = 'success') {
 }
 
 // ── Auto-prefill from route query (when navigated from BookingModal) ──
-onMounted(() => {
+// CRITICAL: await loadServices() FIRST so the services catalogue is populated
+// with prices BEFORE resolveService tries to match. Without the await, prefillBill
+// would run while services.value is still empty, every lookup would fail, and the
+// UI would show "Highlighted rows had no exact price match" for every item.
+onMounted(async () => {
+  await loadServices()
+
   const { name, phone, services } = route.query
   if (name || phone || services) {
     prefillBill({ name, phone, services })
