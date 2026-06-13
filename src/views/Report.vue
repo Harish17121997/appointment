@@ -275,7 +275,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 
-const API_URL = 'https://script.google.com/macros/s/AKfycbx3lXRJdgP7uHFqU82c7T0kxDPW3HEWUcB3LpyGrGlAKpMFIckpWFzuFLSDuGvfzQzDTQ/exec'
+const API_URL = 'https://script.google.com/macros/s/AKfycbxu2e31nVqB-QcIid9yLwkGWvaLsfyMw-_58YihpyCWqHYNe55N1lqIDYEawXxlIHhj/exec'
 
 // ── State ─────────────────────────────────────────────────────────────────
 const viewMode     = ref('day')   // 'day' | 'month'

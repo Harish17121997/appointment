@@ -161,7 +161,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 
-const GAS_URL = 'https://script.google.com/macros/s/AKfycbx3lXRJdgP7uHFqU82c7T0kxDPW3HEWUcB3LpyGrGlAKpMFIckpWFzuFLSDuGvfzQzDTQ/exec'   // same as rest of the app
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbxu2e31nVqB-QcIid9yLwkGWvaLsfyMw-_58YihpyCWqHYNe55N1lqIDYEawXxlIHhj/exec'   // same as rest of the app
 
 const loading      = ref(false)
 const customers    = ref([])
