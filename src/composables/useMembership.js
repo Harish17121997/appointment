@@ -14,6 +14,9 @@ export function useMembership() {
   const error     = ref('')
 
   // ── PLANS ──
+  // Only the active-only call (the common case, used by the plan picker) updates the
+  // shared `plans` ref. The includeInactive call is used for admin listings, which read
+  // the returned data directly instead — keeping the two from clobbering each other.
   async function fetchPlans(includeInactive = false) {
     isLoading.value = true
     error.value     = ''
@@ -21,7 +24,7 @@ export function useMembership() {
       const url  = includeInactive ? `${API_URL}?action=membershipPlansGet&all=true` : `${API_URL}?action=membershipPlansGet`
       const res  = await fetch(url)
       const data = await res.json()
-      plans.value = data.plans || []
+      if (!includeInactive) plans.value = data.plans || []
       return data
     } catch (err) {
       console.error('fetchPlans error:', err)

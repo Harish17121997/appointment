@@ -3,14 +3,20 @@
 
     <!-- Tabs -->
     <div class="mem-tabs">
-      <button class="mem-tab" :class="{ 'mem-tab--active': activeTab === 'new' }" @click="activeTab = 'new'">New Membership</button>
-      <button class="mem-tab" :class="{ 'mem-tab--active': activeTab === 'usage' }" @click="activeTab = 'usage'">Service Usage</button>
-      <button class="mem-tab" :class="{ 'mem-tab--active': activeTab === 'list' }" @click="activeTab = 'list'; loadList()">All Memberships</button>
-      <button class="mem-tab" :class="{ 'mem-tab--active': activeTab === 'plans' }" @click="activeTab = 'plans'">Plans</button>
+      <button class="mem-tab" :class="{ 'mem-tab--active': activeTab === 'new' }" @click="switchTab('new')">New Membership</button>
+      <button class="mem-tab" :class="{ 'mem-tab--active': activeTab === 'usage' }" @click="switchTab('usage')">Service Usage</button>
+      <button class="mem-tab" :class="{ 'mem-tab--active': activeTab === 'list' }" @click="switchTab('list')">All Memberships</button>
+      <button class="mem-tab" :class="{ 'mem-tab--active': activeTab === 'plans' }" @click="switchTab('plans')">Plans</button>
+    </div>
+
+    <!-- Loading overlay: shown while switching to a tab that preloads data -->
+    <div v-if="tabLoading" class="mem-loading">
+      <div class="mem-spinner"></div>
+      <span>Loading…</span>
     </div>
 
     <!-- ══════════════ TAB: NEW MEMBERSHIP ══════════════ -->
-    <div v-if="activeTab === 'new'" class="mem-panel">
+    <div v-if="!tabLoading && activeTab === 'new'" class="mem-panel">
       <h3 class="mem-panel__title">Choose a Plan</h3>
       <div v-if="plans.length === 0" class="mem-empty">No active plans yet. Add one in the Plans tab.</div>
       <div class="plan-grid">
@@ -67,7 +73,7 @@
     </div>
 
     <!-- ══════════════ TAB: SERVICE USAGE ══════════════ -->
-    <div v-if="activeTab === 'usage'" class="mem-panel">
+    <div v-if="!tabLoading && activeTab === 'usage'" class="mem-panel">
       <h3 class="mem-panel__title">Find Membership</h3>
       <div class="form-row-2">
         <div class="form-group">
@@ -86,13 +92,20 @@
         </div>
       </div>
 
-      <div v-if="searchResults.length > 1" class="mem-empty" style="text-align:left">
-        <div style="margin-bottom:8px; font-weight:500;">Multiple memberships found — select one:</div>
-        <div v-for="m in searchResults" :key="m.id" class="pick-row" @click="selectMembership(m)">
-          {{ m.membershipNo }} — {{ m.customerName }} ({{ m.planName }})
-        </div>
+      <div v-if="isLoading" class="mem-inline-loading">
+        <div class="mem-spinner mem-spinner--sm"></div>
+        <span>Loading…</span>
       </div>
-      <div v-else-if="searchResults.length === 0 && searched" class="mem-empty">No membership found.</div>
+
+      <template v-else>
+        <div v-if="searchResults.length > 1" class="mem-empty" style="text-align:left">
+          <div style="margin-bottom:8px; font-weight:500;">Multiple memberships found — select one:</div>
+          <div v-for="m in searchResults" :key="m.id" class="pick-row" @click="selectMembership(m)">
+            {{ m.membershipNo }} — {{ m.customerName }} ({{ m.planName }})
+          </div>
+        </div>
+        <div v-else-if="searchResults.length === 0 && searched" class="mem-empty">No membership found.</div>
+      </template>
 
       <div v-if="selected" class="mem-detail">
         <div class="mem-detail__row">
@@ -157,12 +170,16 @@
     </div>
 
     <!-- ══════════════ TAB: ALL MEMBERSHIPS ══════════════ -->
-    <div v-if="activeTab === 'list'" class="mem-panel">
+    <div v-if="!tabLoading && activeTab === 'list'" class="mem-panel">
       <div class="search-row" style="margin-bottom:16px; max-width:340px;">
         <input class="form-input" v-model="listSearch" placeholder="Search name, phone, or membership no." @keyup.enter="loadList" />
         <button class="btn-cancel" @click="loadList">Search</button>
       </div>
-      <table v-if="memberships.length" class="mem-table">
+      <div v-if="isLoading" class="mem-inline-loading">
+        <div class="mem-spinner mem-spinner--sm"></div>
+        <span>Loading…</span>
+      </div>
+      <table v-else-if="memberships.length" class="mem-table">
         <thead>
           <tr>
             <th>Membership No</th><th>Customer</th><th>Phone</th><th>Plan</th>
@@ -188,7 +205,7 @@
     </div>
 
     <!-- ══════════════ TAB: PLANS (admin) ══════════════ -->
-    <div v-if="activeTab === 'plans'" class="mem-panel">
+    <div v-if="!tabLoading && activeTab === 'plans'" class="mem-panel">
       <div class="plans-header">
         <h3 class="mem-panel__title" style="margin:0">Membership Plans</h3>
         <button class="btn-save" style="width:auto; padding: 8px 16px;" @click="openPlanModal()">+ Add Plan</button>
@@ -355,7 +372,7 @@ import { useWhatsApp } from '@/composables/useWhatsApp'
 
 const {
   plans, memberships, usageHistory,
-  isSaving,
+  isLoading, isSaving,
   fetchPlans, savePlan, deletePlan,
   saveMembership, fetchMembershipById, fetchMembershipsByPhone,
   fetchMembershipList, fetchUsageHistory, recordUsage
@@ -365,6 +382,25 @@ const { openWhatsApp } = useWhatsApp()
 
 const activeTab = ref('new')
 const allPlans = ref([])
+
+// Separate from the composable's shared `isLoading` (which also covers in-panel
+// searches like the usage-tab lookup) so switching tabs doesn't blank out a
+// panel the user is actively typing into elsewhere.
+const tabLoading = ref(false)
+
+// ── Tab switching: reload whatever data that tab needs, full-panel loading shown via tabLoading ──
+async function switchTab(tab) {
+  activeTab.value = tab
+  tabLoading.value = true
+  try {
+    if (tab === 'new') await loadPlans()
+    else if (tab === 'list') await loadList()
+    else if (tab === 'plans') await loadPlans()
+    // 'usage' tab has no data to preload — it loads on search
+  } finally {
+    tabLoading.value = false
+  }
+}
 
 // ── Toast ──
 const toast = reactive({ show: false, message: '', type: 'success' })
@@ -670,12 +706,18 @@ async function removePlan(p) {
 }
 
 async function loadPlans() {
-  await fetchPlans(false)
-  const activeRes = await fetchPlans(true)
+  const [, activeRes] = await Promise.all([fetchPlans(false), fetchPlans(true)])
   allPlans.value = activeRes.plans || []
 }
 
-onMounted(loadPlans)
+onMounted(async () => {
+  tabLoading.value = true
+  try {
+    await loadPlans()
+  } finally {
+    tabLoading.value = false
+  }
+})
 </script>
 
 <style scoped>
@@ -693,6 +735,28 @@ onMounted(loadPlans)
 .mem-panel { background: var(--color-surface, #fff); border: 1px solid var(--color-border, #e0e0e0); border-radius: 12px; padding: 22px; }
 .mem-panel__title { font-size: 14px; font-weight: 600; margin-bottom: 12px; }
 .mem-empty { color: var(--color-text-muted, #888); font-size: 13px; padding: 16px 0; }
+
+/* Loading states */
+.mem-loading {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 12px; padding: 60px 20px;
+  color: var(--color-text-muted, #888); font-size: 14px;
+  background: var(--color-surface, #fff); border: 1px solid var(--color-border, #e0e0e0); border-radius: 12px;
+}
+.mem-inline-loading {
+  display: flex; align-items: center; gap: 10px;
+  padding: 14px 0;
+  color: var(--color-text-muted, #888); font-size: 13px;
+}
+.mem-spinner {
+  width: 28px; height: 28px;
+  border: 3px solid var(--color-border, #e0e0e0);
+  border-top-color: var(--color-accent, #8B6F47);
+  border-radius: 50%;
+  animation: mem-spin 0.8s linear infinite;
+}
+.mem-spinner--sm { width: 16px; height: 16px; border-width: 2px; }
+@keyframes mem-spin { to { transform: rotate(360deg); } }
 
 /* Plan cards */
 .plan-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
