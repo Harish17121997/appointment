@@ -11,12 +11,12 @@
         </div>
         <div>
           <h2 class="header-title">WhatsApp Campaign</h2>
-          <p class="header-sub">Customers who visited 30+ days ago — send a reminder</p>
+          <p class="header-sub">Customers whose last visit was exactly {{ dayThreshold }} days ago — send a reminder</p>
         </div>
       </div>
       <div class="header-controls">
         <div class="range-wrap">
-          <label class="range-label">Due after</label>
+          <label class="range-label">Exactly</label>
           <select v-model="dayThreshold" class="range-select" @change="loadCampaign">
             <option :value="20">20 days</option>
             <option :value="30">30 days</option>
@@ -64,7 +64,7 @@
         <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
         <polyline points="22 4 12 14.01 9 11.01"/>
       </svg>
-      <p>All customers visited within the last {{ dayThreshold }} days 🎉</p>
+      <p>No customers hit exactly {{ dayThreshold }} days since their last visit today 🎉</p>
     </div>
 
     <!-- Customer Table -->

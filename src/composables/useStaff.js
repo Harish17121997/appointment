@@ -125,30 +125,43 @@ export function useStaff() {
     }
   }
 
+  // Tracks the latest in-flight save promise per cell ("staffId_day"), so
+  // rapid re-clicks on the same cell are serialized instead of firing
+  // overlapping requests that can resolve out of order and stick the wrong
+  // status in the sheet.
+  const _cellQueues = new Map()
+
   // ─── SAVE ONE ATTENDANCE CELL (called on every toggle → instant save) ────────
   async function saveAttendanceCell(staffId, month, day, status) {
     const sid  = String(staffId)
     const dNum = Number(day)
     const pKey = `${sid}_${dNum}`
-    _pendingSaves.add(pKey)           // block fetch from overwriting this cell
-    try {
-      const params = new URLSearchParams({
-        action:  'attendanceSave',
-        staffId: sid,
-        month,
-        day:     String(dNum),
-        status:  status || ''
-      })
-      const res  = await fetch(`${API_URL}?${params}`)
-      const data = await res.json()
-      if (!data.success) throw new Error(data.error || 'Save failed')
-      return true
-    } catch (err) {
-      console.error('saveAttendanceCell error:', err)
-      return false
-    } finally {
-      _pendingSaves.delete(pKey)      // unblock future fetches for this cell
-    }
+
+    const prev = _cellQueues.get(pKey) || Promise.resolve()
+    const run = prev.then(async () => {
+      _pendingSaves.add(pKey)           // block fetch from overwriting this cell
+      try {
+        const params = new URLSearchParams({
+          action:  'attendanceSave',
+          staffId: sid,
+          month,
+          day:     String(dNum),
+          status:  status || ''
+        })
+        const res  = await fetch(`${API_URL}?${params}`)
+        const data = await res.json()
+        if (!data.success) throw new Error(data.error || 'Save failed')
+        return true
+      } catch (err) {
+        console.error('saveAttendanceCell error:', err)
+        return false
+      } finally {
+        _pendingSaves.delete(pKey)      // unblock future fetches for this cell
+      }
+    })
+
+    _cellQueues.set(pKey, run)
+    return run
   }
 
   // ─── SAVE PAYMENT ADJUSTMENTS ────────────────────────────────────────────────
