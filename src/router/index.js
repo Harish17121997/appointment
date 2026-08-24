@@ -6,6 +6,7 @@ import Services     from '@/views/Services.vue'
 import Login        from '@/views/Login.vue'
 import Report       from '@/views/Reports.vue'
 import Campaign     from '@/views/Campaign.vue'
+import Membership   from '@/views/Membership.vue'
 
 const routes = [
   { path: '/login',        name: 'Login',        component: Login, meta: { public: true } },
@@ -14,6 +15,7 @@ const routes = [
   { path: '/appointments', name: 'Appointments', component: Appointments },
   { path: '/staff',        name: 'Staff',        component: Staff, meta: { ownerOnly: true } },
   { path: '/services',     name: 'Services',     component: Services },
+  { path: '/membership',   name: 'Membership',   component: Membership },
   { path: '/reports',      name: 'Reports',      component: Report },
   { path: '/campaign',     name: 'Campaign',     component: () => Campaign },
   { path: '/:pathMatch(.*)*', redirect: '/login' },

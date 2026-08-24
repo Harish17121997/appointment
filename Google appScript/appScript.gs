@@ -12,6 +12,9 @@ const PRODUCT_SHEET = 'products'
 const REPORT_SHEET = 'report'
 const EXPENSE_SHEET = 'expenses'
 const SERVICES_SHEET = 'services'
+const PLANS_SHEET = 'plans'
+const MEMBERSHIP_SHEET = 'membership'
+const MEMBERSHIP_USAGE_SHEET = 'membershipUsage'
 
 function normalizeSheetDate(value) {
   if (!value) return ''
@@ -111,6 +114,16 @@ function doGet(e) {
     if (action === 'serviceGet')    return json(serviceGet())
     if (action === 'serviceSave')   return json(serviceSave(e))
     if (action === 'serviceDelete') return json(serviceDelete(e))
+
+    // Membership
+    if (action === 'membershipPlansGet')   return json(membershipPlansGet(e))
+    if (action === 'membershipPlanSave')   return json(membershipPlanSave(e))
+    if (action === 'membershipPlanDelete') return json(membershipPlanDelete(e))
+    if (action === 'membershipSave')       return json(membershipSave(e))
+    if (action === 'membershipGet')        return json(membershipGet(e))
+    if (action === 'membershipListGet')    return json(membershipListGet(e))
+    if (action === 'membershipUsageGet')   return json(membershipUsageGet(e))
+    if (action === 'membershipUsageSave')  return json(membershipUsageSave(e))
 
     return json({ success: false, error: 'Invalid action' })
   } catch (err) {
@@ -893,6 +906,347 @@ function serviceDelete(e) {
   return { success: true }
 }
 
+// ─────────────────────────────────────────────
+// MEMBERSHIP
+// ─────────────────────────────────────────────
+
+// DD-MM-YYYY string -> Date at midnight (local script timezone)
+function parseSheetDate(dateStr) {
+  const [dd, mm, yyyy] = String(dateStr).split('-').map(Number)
+  return new Date(yyyy, mm - 1, dd)
+}
+
+// DD-MM-YYYY string + N months -> DD-MM-YYYY string
+function addMonthsToDateStr(dateStr, months) {
+  const d = parseSheetDate(dateStr)
+  d.setMonth(d.getMonth() + Number(months))
+  return normalizeSheetDate(d)
+}
+
+function computeMembershipStatus(expiryDateStr, remainingBalance) {
+  if (remainingBalance <= 0) return 'Fully Utilized'
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  if (today > parseSheetDate(expiryDateStr)) return 'Expired'
+  return 'Active'
+}
+
+function getMembershipUsageTotal(membershipId) {
+  const sheet = getSheet(MEMBERSHIP_USAGE_SHEET)
+  if (!sheet) return 0
+  const rows = sheet.getDataRange().getValues()
+  let total = 0
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][1]) === String(membershipId)) {
+      total += Number(rows[i][4]) || 0
+    }
+  }
+  return total
+}
+
+function enrichMembership(row) {
+  const benefitAmount = Number(row[7]) || 0
+  const totalUsed     = getMembershipUsageTotal(row[0])
+  const remainingBalance = Math.max(0, benefitAmount - totalUsed)
+  const status = computeMembershipStatus(row[9], remainingBalance)
+
+  return {
+    id:             String(row[0]),
+    membershipNo:   String(row[1] || ''),
+    customerName:   String(row[2] || ''),
+    customerPhone:  String(row[3] || ''),
+    planId:         String(row[4] || ''),
+    planName:       String(row[5] || ''),
+    paidAmount:     Number(row[6]) || 0,
+    benefitAmount:  benefitAmount,
+    startDate:      normalizeSheetDate(row[8]),
+    expiryDate:     normalizeSheetDate(row[9]),
+    status:         status,
+    paymentMethod:  String(row[11] || 'Cash'),
+    invoiceNo:      String(row[12] || ''),
+    createdAt:      String(row[13] || ''),
+    totalUsed:      totalUsed,
+    remainingBalance: remainingBalance
+  }
+}
+
+// Opportunistically writes the freshly computed status back to column K (idempotent, no lock needed)
+function syncMembershipStatusCell(sheet, rowIndex, status) {
+  sheet.getRange(rowIndex, 11).setValue(status)
+}
+
+// ── PLANS ──
+function membershipPlansGet(e) {
+  const sheet = getSheet(PLANS_SHEET)
+  if (!sheet) return { success: false, error: 'plans sheet not found' }
+
+  const includeInactive = e && e.parameter && e.parameter.all === 'true'
+  const rows = sheet.getDataRange().getValues()
+
+  const plans = rows.slice(1)
+    .filter(r => r[0] && r[1])
+    .map(r => ({
+      id:             String(r[0]),
+      name:           String(r[1]).trim(),
+      paidAmount:     Number(r[2]) || 0,
+      benefitAmount:  Number(r[3]) || 0,
+      validityMonths: Number(r[4]) || 0,
+      active:         r[5] === true || r[5] === 'TRUE' || r[5] === 'true' || r[5] === '',
+      createdAt:      String(r[6] || '')
+    }))
+    .filter(p => includeInactive || p.active)
+    .sort((a, b) => a.paidAmount - b.paidAmount)
+
+  return { success: true, plans }
+}
+
+function membershipPlanSave(e) {
+  const sheet = getSheet(PLANS_SHEET)
+  if (!sheet) return { success: false, error: 'plans sheet not found' }
+
+  const id             = e.parameter.id || String(Date.now())
+  const name           = (e.parameter.name || '').trim()
+  const paidAmount     = Number(e.parameter.paidAmount) || 0
+  const benefitAmount  = Number(e.parameter.benefitAmount) || 0
+  const validityMonths = Number(e.parameter.validityMonths) || 0
+  const active         = e.parameter.active !== 'false'
+
+  if (!name) return { success: false, error: 'name is required' }
+
+  const rows  = sheet.getDataRange().getValues()
+  let updated = false
+
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(id)) {
+      sheet.getRange(i + 1, 1, 1, 7).setValues([[
+        id, name, paidAmount, benefitAmount, validityMonths, active, rows[i][6] || new Date()
+      ]])
+      updated = true
+      break
+    }
+  }
+
+  if (!updated) {
+    sheet.appendRow([id, name, paidAmount, benefitAmount, validityMonths, active, new Date()])
+  }
+
+  return { success: true, id }
+}
+
+function membershipPlanDelete(e) {
+  const sheet = getSheet(PLANS_SHEET)
+  if (!sheet) return { success: false, error: 'plans sheet not found' }
+
+  const id   = String(e.parameter.id || '')
+  const rows = sheet.getDataRange().getValues()
+
+  for (let i = rows.length - 1; i >= 1; i--) {
+    if (String(rows[i][0]) === id) {
+      sheet.deleteRow(i + 1)
+    }
+  }
+
+  return { success: true }
+}
+
+// ── MEMBERSHIP ──
+function membershipSave(e) {
+  const lock = LockService.getScriptLock()
+  lock.waitLock(30000)
+
+  try {
+    const sheet = getSheet(MEMBERSHIP_SHEET)
+    if (!sheet) return { success: false, error: 'membership sheet not found' }
+
+    const plansSheet = getSheet(PLANS_SHEET)
+    if (!plansSheet) return { success: false, error: 'plans sheet not found' }
+
+    const planId = String(e.parameter.planId || '')
+    const planRows = plansSheet.getDataRange().getValues()
+    let plan = null
+    for (let i = 1; i < planRows.length; i++) {
+      if (String(planRows[i][0]) === planId) {
+        plan = {
+          name: String(planRows[i][1]).trim(),
+          benefitAmount: Number(planRows[i][3]) || 0,
+          validityMonths: Number(planRows[i][4]) || 0
+        }
+        break
+      }
+    }
+    if (!plan) return { success: false, error: 'Selected plan not found' }
+
+    const customerName  = (e.parameter.customerName || '').trim()
+    const customerPhone = (e.parameter.customerPhone || '').trim()
+    if (!customerName)  return { success: false, error: 'Customer name is required' }
+    if (!customerPhone) return { success: false, error: 'Customer phone is required' }
+
+    const paidAmount    = Number(e.parameter.paidAmount) || 0
+    const paymentMethod = (e.parameter.paymentMethod || 'Cash').trim()
+    const invoiceNo     = e.parameter.invoiceNo || ''
+    const startDate     = normalizeSheetDate(e.parameter.startDate || todayKey())
+    const expiryDate    = addMonthsToDateStr(startDate, plan.validityMonths)
+
+    // Generate a collision-checked membership number under the same lock
+    const rows = sheet.getDataRange().getValues()
+    const existingNos = new Set(rows.slice(1).map(r => String(r[1])))
+    const pad = n => String(n).padStart(2, '0')
+    const now = new Date()
+    const datePart = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}`
+    let membershipNo
+    do {
+      membershipNo = `MEM-${datePart}-${Math.floor(Math.random() * 900 + 100)}`
+    } while (existingNos.has(membershipNo))
+
+    const id = String(Date.now())
+    const status = computeMembershipStatus(expiryDate, plan.benefitAmount)
+
+    sheet.appendRow([
+      id, membershipNo, customerName, customerPhone,
+      planId, plan.name, paidAmount, plan.benefitAmount,
+      "'" + startDate, "'" + expiryDate, status,
+      paymentMethod, invoiceNo, new Date().toISOString()
+    ])
+
+    return {
+      success: true, id, membershipNo, expiryDate,
+      benefitAmount: plan.benefitAmount, status
+    }
+  } finally {
+    lock.releaseLock()
+  }
+}
+
+function membershipGet(e) {
+  const sheet = getSheet(MEMBERSHIP_SHEET)
+  if (!sheet) return { success: false, error: 'membership sheet not found' }
+
+  const id    = e.parameter.id ? String(e.parameter.id) : null
+  const phone = e.parameter.phone ? String(e.parameter.phone).trim() : null
+
+  const rows = sheet.getDataRange().getValues()
+  const memberships = []
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i]
+    if (id && String(row[0]) === id) {
+      memberships.push(enrichMembership(row))
+    } else if (phone && String(row[3]).trim() === phone) {
+      memberships.push(enrichMembership(row))
+    }
+  }
+
+  return { success: true, memberships }
+}
+
+function membershipListGet(e) {
+  const sheet = getSheet(MEMBERSHIP_SHEET)
+  if (!sheet) return { success: false, error: 'membership sheet not found' }
+
+  const search = (e && e.parameter && e.parameter.search || '').trim().toLowerCase()
+  const rows = sheet.getDataRange().getValues()
+
+  let memberships = rows.slice(1).map(enrichMembership)
+
+  if (search) {
+    memberships = memberships.filter(m =>
+      m.customerName.toLowerCase().includes(search) ||
+      m.customerPhone.includes(search) ||
+      m.membershipNo.toLowerCase().includes(search)
+    )
+  }
+
+  memberships.sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''))
+
+  return { success: true, memberships }
+}
+
+function membershipUsageGet(e) {
+  const sheet = getSheet(MEMBERSHIP_USAGE_SHEET)
+  if (!sheet) return { success: false, error: 'membershipUsage sheet not found' }
+
+  const membershipId = String(e.parameter.membershipId || '')
+  const rows = sheet.getDataRange().getValues()
+
+  const usage = rows.slice(1)
+    .filter(r => String(r[1]) === membershipId)
+    .map(r => ({
+      id:                    String(r[0]),
+      membershipId:          String(r[1]),
+      date:                  normalizeSheetDate(r[2]),
+      serviceDescription:    String(r[3] || ''),
+      amount:                Number(r[4]) || 0,
+      remainingBalanceAfter: Number(r[5]) || 0,
+      staffName:             String(r[6] || ''),
+      createdAt:             String(r[7] || '')
+    }))
+    .sort((a, b) => parseSheetDate(a.date) - parseSheetDate(b.date))
+
+  return { success: true, usage }
+}
+
+function membershipUsageSave(e) {
+  const lock = LockService.getScriptLock()
+  lock.waitLock(30000)
+
+  try {
+    const sheet = getSheet(MEMBERSHIP_SHEET)
+    if (!sheet) return { success: false, error: 'membership sheet not found' }
+    const usageSheet = getSheet(MEMBERSHIP_USAGE_SHEET)
+    if (!usageSheet) return { success: false, error: 'membershipUsage sheet not found' }
+
+    const membershipId = String(e.parameter.membershipId || '')
+    const rows = sheet.getDataRange().getValues()
+
+    let rowIndex = -1
+    let membershipRow = null
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][0]) === membershipId) {
+        rowIndex = i + 1
+        membershipRow = rows[i]
+        break
+      }
+    }
+    if (!membershipRow) return { success: false, error: 'Membership not found' }
+
+    const benefitAmount = Number(membershipRow[7]) || 0
+    const expiryDate    = normalizeSheetDate(membershipRow[9])
+    const totalUsed     = getMembershipUsageTotal(membershipId)
+    const remainingBalance = Math.max(0, benefitAmount - totalUsed)
+    const status = computeMembershipStatus(expiryDate, remainingBalance)
+
+    if (status === 'Expired')        return { success: false, error: 'Membership has expired' }
+    if (status === 'Fully Utilized') return { success: false, error: 'Membership balance is fully utilized' }
+
+    const requested = Number(e.parameter.amount) || 0
+    if (requested <= 0) return { success: false, error: 'Service amount must be greater than zero' }
+
+    const amountDeducted = Math.min(requested, remainingBalance)
+    const clamped = amountDeducted < requested
+    const newRemaining = remainingBalance - amountDeducted
+
+    const date = normalizeSheetDate(e.parameter.date || todayKey())
+    const serviceDescription = (e.parameter.serviceDescription || '').trim()
+    const staffName = (e.parameter.staffName || '').trim()
+
+    usageSheet.appendRow([
+      String(Date.now()), membershipId, "'" + date, serviceDescription,
+      amountDeducted, newRemaining, staffName, new Date().toISOString()
+    ])
+
+    const newStatus = computeMembershipStatus(expiryDate, newRemaining)
+    syncMembershipStatusCell(sheet, rowIndex, newStatus)
+
+    return {
+      success: true,
+      amountDeducted,
+      remainingBalance: newRemaining,
+      clamped
+    }
+  } finally {
+    lock.releaseLock()
+  }
+}
 
 // ─────────────────────────────────────────────
 // CACHE CLEAR
