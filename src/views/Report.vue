@@ -404,7 +404,9 @@ const staffBreakdown = computed(() => {
 
     // Collect what each staff member did in this invoice
     const staffInvoice = {}  // staffName → total for this invoice
-    let unattributed = 0
+    let unattributed = 0        // items with no @rate and no staff tag (unparseable)
+    let unattributedAmount = 0  // items with a @rate but no staff tag
+    let unattributedCount  = 0
 
     // Track whether any item has a @rate so we know which format this invoice uses
     let hasRates = false
@@ -426,7 +428,8 @@ const staffBreakdown = computed(() => {
         staffInvoice[staff].count  += Number(matchNew[2])
       } else if (matchNewNoStaff) {
         hasRates = true
-        unattributed += Number(matchNewNoStaff[3])
+        unattributedAmount += Number(matchNewNoStaff[3])
+        unattributedCount  += Number(matchNewNoStaff[2])
       } else if (matchOld) {
         const qty   = Number(matchOld[2])
         const staff = matchOld[3].trim()
@@ -439,7 +442,7 @@ const staffBreakdown = computed(() => {
 
     const staffNames = Object.keys(staffInvoice)
 
-    if (staffNames.length === 0) {
+    if (staffNames.length === 0 && unattributedAmount === 0) {
       // No staff listed — attribute to "Unassigned"
       const key = 'Unassigned'
       if (!map[key]) map[key] = { revenue: 0, cash: 0, upi: 0, services: 0 }
@@ -450,11 +453,32 @@ const staffBreakdown = computed(() => {
     }
 
     if (hasRates) {
-      // New format: use exact @amount per staff — correct attribution
-      staffNames.forEach(staff => {
+      // Untagged items (rate but no staff) are split proportionally across
+      // this invoice's tagged staff — by their tagged-amount share, or evenly
+      // if no staff has a tagged amount yet.
+      if (unattributedAmount > 0 && staffNames.length > 0) {
+        const taggedTotal = staffNames.reduce((s, staff) => s + staffInvoice[staff].amount, 0)
+        staffNames.forEach(staff => {
+          const share = taggedTotal > 0 ? staffInvoice[staff].amount / taggedTotal : 1 / staffNames.length
+          staffInvoice[staff].amount += unattributedAmount * share
+          staffInvoice[staff].count  += Math.round(unattributedCount * share)
+        })
+      } else if (unattributedAmount > 0) {
+        // No tagged staff at all on this invoice — treat as Unassigned
+        staffInvoice['Unassigned'] = { amount: unattributedAmount, count: unattributedCount }
+      }
+
+      const finalStaffNames = Object.keys(staffInvoice)
+      // New format: use exact @amount per staff, scaled down proportionally
+      // by the invoice's discount so staff totals reconcile with grandTotal
+      const rawTotal = finalStaffNames.reduce((s, staff) => s + staffInvoice[staff].amount, 0)
+      const grandTotal = Number(row.grandTotal || 0)
+      const scale = rawTotal > 0 ? grandTotal / rawTotal : 1
+      finalStaffNames.forEach(staff => {
         if (!map[staff]) map[staff] = { revenue: 0, cash: 0, upi: 0, services: 0 }
-        map[staff].revenue  += staffInvoice[staff].amount
-        map[staff][method]  += staffInvoice[staff].amount
+        const amount = Math.round(staffInvoice[staff].amount * scale)
+        map[staff].revenue  += amount
+        map[staff][method]  += amount
         map[staff].services += staffInvoice[staff].count
       })
     } else {
