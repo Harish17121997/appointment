@@ -9,6 +9,7 @@
           <div class="loader-text">{{ loadingMsg }}</div>
         </div>
       </div>
+      
     </transition>
 
     <!-- ── Error banner ── -->
