@@ -230,7 +230,13 @@
           Invoices — {{ dayLabel }}
         </div>
         <div class="inv-list">
-          <div v-for="row in rows" :key="row.invoiceNo" class="inv-row">
+          <div
+            v-for="row in rows"
+            :key="row.invoiceNo + row.createdAt"
+            class="inv-row inv-row--clickable"
+            title="Click to edit"
+            @click="openEdit(row)"
+          >
             <div class="inv-row__left">
               <div class="inv-row__num">{{ row.invoiceNo }}</div>
               <div class="inv-row__customer">{{ row.customerName || 'Walk-in' }}</div>
@@ -269,11 +275,112 @@
       <span class="rp-empty__hint">Invoices appear here after clicking <strong>Done</strong> on a bill.</span>
     </div>
 
+    <!-- ── Edit Invoice Modal ── -->
+    <div v-if="edit.show" class="em-overlay" @click.self="closeEdit">
+      <div class="em-modal" role="dialog" aria-modal="true">
+        <div class="em-head">
+          <div>
+            <div class="em-title">Edit Invoice</div>
+            <div class="em-sub">{{ edit.invoiceNo }} · {{ edit.date }}</div>
+          </div>
+          <button class="em-close" @click="closeEdit" :disabled="edit.saving" aria-label="Close">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
+        </div>
+
+        <div class="em-body">
+          <!-- Customer -->
+          <div class="em-grid">
+            <div class="em-field">
+              <label class="filter-label">Customer</label>
+              <input v-model="edit.customerName" class="filter-input" placeholder="Walk-in" />
+            </div>
+            <div class="em-field">
+              <label class="filter-label">Phone</label>
+              <input v-model="edit.customerPhone" class="filter-input" inputmode="tel" />
+            </div>
+          </div>
+
+          <!-- Line items -->
+          <div class="em-section-label">Services</div>
+          <div class="em-items">
+            <div v-for="(item, idx) in edit.items" :key="item.key" class="em-item">
+              <input v-model="item.name" class="filter-input em-item__name" placeholder="Service name" />
+              <template v-if="!item.raw">
+                <input v-model.number="item.qty" type="number" min="1" class="filter-input em-item__qty" title="Qty" />
+                <div class="em-amount">
+                  <span>₹</span>
+                  <input v-model.number="item.amount" type="number" min="0" class="filter-input em-item__amt" placeholder="Amount" title="Amount" />
+                </div>
+                <select v-model="item.staff" class="filter-input em-item__staff">
+                  <option value="">No staff</option>
+                  <option v-for="name in staffOptions(item.staff)" :key="name" :value="name">{{ name }}</option>
+                </select>
+              </template>
+              <button class="em-item__del" @click="removeItem(idx)" title="Remove">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                </svg>
+              </button>
+            </div>
+            <button class="em-add" @click="addItem">+ Add service</button>
+          </div>
+
+          <!-- Totals -->
+          <div class="em-grid em-grid--3">
+            <div class="em-field">
+              <label class="filter-label">Subtotal</label>
+              <input
+                :value="editSubtotal"
+                @input="edit.subtotal = Number($event.target.value) || 0"
+                type="number" min="0"
+                class="filter-input"
+                :readonly="subtotalAuto"
+                :title="subtotalAuto ? 'Calculated from service amounts' : ''"
+              />
+            </div>
+            <div class="em-field">
+              <label class="filter-label">Discount</label>
+              <input v-model.number="edit.discount" type="number" min="0" class="filter-input" />
+            </div>
+            <div class="em-field">
+              <label class="filter-label">Discount Reason</label>
+              <input v-model="edit.discountReason" class="filter-input" />
+            </div>
+          </div>
+
+          <div class="em-field">
+            <label class="filter-label">Payment Method</label>
+            <div class="view-toggle em-pay">
+              <button class="vt-btn" :class="{ 'vt-btn--active': edit.paymentMethod === 'Cash' }" @click="edit.paymentMethod = 'Cash'">Cash</button>
+              <button class="vt-btn" :class="{ 'vt-btn--active': edit.paymentMethod === 'UPI' }" @click="edit.paymentMethod = 'UPI'">UPI</button>
+            </div>
+          </div>
+
+          <div v-if="edit.error" class="rp-error em-error">{{ edit.error }}</div>
+        </div>
+
+        <div class="em-foot">
+          <div class="em-total">
+            Grand Total <strong>₹{{ editGrandTotal.toLocaleString('en-IN') }}</strong>
+          </div>
+          <div class="em-actions">
+            <button class="rp-refresh-btn" @click="closeEdit" :disabled="edit.saving">Cancel</button>
+            <button class="em-save" @click="saveEdit" :disabled="edit.saving">
+              {{ edit.saving ? 'Saving…' : 'Save' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { API_URL } from '@/config'
 
 // ── State ─────────────────────────────────────────────────────────────────
@@ -538,6 +645,142 @@ const dailySummary = computed(() => {
       }
     })
 })
+
+// ── Edit Invoice ──────────────────────────────────────────────────────────
+const staffNames = ref([])
+let itemKey = 0
+
+const edit = reactive({
+  show: false, saving: false, error: '',
+  date: '', invoiceNo: '', createdAt: '',
+  customerName: '', customerPhone: '',
+  items: [],   // { key, name, qty, amount, staff, raw }
+  subtotal: 0, discount: 0, discountReason: '',
+  paymentMethod: 'Cash',
+})
+
+async function loadStaffNames() {
+  if (staffNames.value.length) return
+  try {
+    const res  = await fetch(`${API_URL}?action=staffGet`)
+    const data = await res.json()
+    staffNames.value = (data.staff || []).map(s => String(s.name || '').trim()).filter(Boolean)
+  } catch (err) {
+    console.error('Staff fetch error:', err)
+  }
+}
+
+// Keep a staff name that is on the invoice but no longer in the staff sheet
+function staffOptions(current) {
+  return current && !staffNames.value.includes(current)
+    ? [current, ...staffNames.value]
+    : staffNames.value
+}
+
+// Parse the "items" string written by Services.vue into editable lines.
+// Same formats as staffBreakdown; anything else (e.g. "Membership: Gold")
+// is kept as a raw line that only has a name.
+function parseItems(itemsStr) {
+  return (itemsStr || '').split(';').map(p => p.trim()).filter(Boolean).map(part => {
+    const key = ++itemKey
+    let m = part.match(/^(.+?)\s+x(\d+)\s+@(\d+(?:\.\d+)?)\s+\((.+?)\)$/)
+    if (m) return { key, name: m[1], qty: Number(m[2]), amount: Number(m[3]), staff: m[4].trim(), raw: false }
+    m = part.match(/^(.+?)\s+x(\d+)\s+@(\d+(?:\.\d+)?)$/)
+    if (m) return { key, name: m[1], qty: Number(m[2]), amount: Number(m[3]), staff: '', raw: false }
+    m = part.match(/^(.+?)\s+x(\d+)\s+\((.+?)\)$/)
+    if (m) return { key, name: m[1], qty: Number(m[2]), amount: '', staff: m[3].trim(), raw: false }
+    return { key, name: part, qty: 1, amount: '', staff: '', raw: true }
+  })
+}
+
+function serializeItems(items) {
+  return items
+    .filter(i => String(i.name || '').trim())
+    .map(i => {
+      const name = String(i.name).trim()
+      if (i.raw) return name
+      const qty    = Math.max(1, Number(i.qty) || 1)
+      const amount = i.amount === '' || i.amount == null ? '' : ` @${Number(i.amount) || 0}`
+      const staff  = i.staff ? ` (${i.staff})` : ''
+      return `${name} x${qty}${amount}${staff}`
+    })
+    .join('; ')
+}
+
+// Subtotal follows the line amounts when every service line has one;
+// otherwise (old-format / membership rows) it is entered by hand.
+const namedItems = computed(() => edit.items.filter(i => String(i.name || '').trim()))
+const subtotalAuto = computed(() =>
+  namedItems.value.length > 0 &&
+  namedItems.value.every(i => !i.raw && i.amount !== '' && i.amount != null))
+const editSubtotal = computed(() => subtotalAuto.value
+  ? namedItems.value.reduce((s, i) => s + (Number(i.amount) || 0), 0)
+  : Number(edit.subtotal) || 0)
+const editGrandTotal = computed(() => Math.max(0, editSubtotal.value - (Number(edit.discount) || 0)))
+
+function openEdit(row) {
+  Object.assign(edit, {
+    show: true, saving: false, error: '',
+    date: row.date, invoiceNo: row.invoiceNo, createdAt: row.createdAt,
+    customerName:  row.customerName,
+    customerPhone: row.customerPhone,
+    items:         parseItems(row.items),
+    subtotal:      Number(row.subtotal) || 0,
+    discount:      Number(row.discount) || 0,
+    discountReason: row.discountReason,
+    paymentMethod: row.paymentMethod === 'UPI' ? 'UPI' : 'Cash',
+  })
+  loadStaffNames()
+}
+
+function closeEdit() {
+  if (!edit.saving) edit.show = false
+}
+
+function addItem() {
+  edit.items.push({ key: ++itemKey, name: '', qty: 1, amount: 0, staff: '', raw: false })
+}
+function removeItem(idx) {
+  edit.items.splice(idx, 1)
+}
+
+async function saveEdit() {
+  if (edit.saving) return
+  const items = serializeItems(edit.items)
+  if (!items) { edit.error = 'Add at least one service.'; return }
+  if ((Number(edit.discount) || 0) > editSubtotal.value) { edit.error = 'Discount cannot exceed subtotal.'; return }
+
+  edit.saving = true
+  edit.error  = ''
+  try {
+    const staffList = [...new Set(edit.items.filter(i => !i.raw && i.staff).map(i => i.staff))].join(', ')
+    const params = new URLSearchParams({
+      action:         'reportUpdate',
+      invoiceNo:      edit.invoiceNo,
+      createdAt:      edit.createdAt,
+      customerName:   edit.customerName.trim() || 'Walk-in',
+      customerPhone:  edit.customerPhone.trim(),
+      items,
+      staffList,
+      subtotal:       editSubtotal.value,
+      discount:       Number(edit.discount) || 0,
+      discountReason: edit.discountReason || '',
+      grandTotal:     editGrandTotal.value,
+      paymentMethod:  edit.paymentMethod,
+    })
+    const res  = await fetch(`${API_URL}?${params.toString()}`)
+    const data = await res.json()
+    if (!data.success) throw new Error(data.error || 'Save failed')
+
+    edit.saving = false
+    edit.show   = false
+    reload()
+  } catch (err) {
+    edit.error  = err.message || 'Could not save. Check your network.'
+    edit.saving = false
+    console.error('Report update error:', err)
+  }
+}
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────
 onMounted(() => loadDay())
@@ -929,6 +1172,112 @@ onMounted(() => loadDay())
   font-size: 11.5px;
   color: #e53e3e;
   margin-top: 2px;
+}
+
+.inv-row--clickable { cursor: pointer; }
+
+/* ── Edit modal ── */
+.em-overlay {
+  position: fixed; inset: 0; z-index: 1000;
+  background: rgba(0,0,0,0.4);
+  display: flex; align-items: center; justify-content: center;
+  padding: 16px;
+}
+.em-modal {
+  background: var(--color-surface, white);
+  border-radius: 14px;
+  width: 100%; max-width: 720px;
+  max-height: calc(100vh - 32px);
+  display: flex; flex-direction: column;
+  box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+  overflow: hidden;
+}
+.em-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #faf8f5 0%, #f5ede4 100%);
+  border-bottom: 1px solid var(--color-border, #e8e8e8);
+}
+.em-title { font-size: 16px; font-weight: 700; color: var(--color-text, #1a1a1a); }
+.em-sub   { font-size: 12px; color: var(--color-accent, #8B6F47); margin-top: 2px; }
+.em-close {
+  width: 30px; height: 30px; border-radius: 7px;
+  border: none; background: none; cursor: pointer;
+  color: var(--color-text-muted, #666);
+  display: flex; align-items: center; justify-content: center;
+}
+.em-close:hover { background: rgba(0,0,0,0.05); }
+
+.em-body {
+  padding: 18px 20px;
+  overflow-y: auto;
+  display: flex; flex-direction: column; gap: 16px;
+}
+.em-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.em-grid--3 { grid-template-columns: 1fr 1fr 1.4fr; }
+.em-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.em-field .filter-input { width: 100%; box-sizing: border-box; }
+.em-field .filter-input[readonly] { background: var(--color-surface-2, #f7f7f7); }
+
+.em-section-label {
+  font-size: 11px; font-weight: 600;
+  color: var(--color-text-muted, #888);
+  text-transform: uppercase; letter-spacing: 0.05em;
+  margin-bottom: -8px;
+}
+.em-items { display: flex; flex-direction: column; gap: 8px; }
+.em-item { display: flex; gap: 8px; align-items: center; }
+.em-item .filter-input { padding: 7px 10px; font-size: 13px; min-width: 0; box-sizing: border-box; }
+.em-item__name  { flex: 1 1 180px; }
+.em-item__qty   { width: 60px; flex-shrink: 0; }
+.em-amount {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 13px; color: var(--color-text-muted, #888);
+  flex-shrink: 0;
+}
+.em-item__amt   { width: 90px; }
+.em-item__staff { width: 130px; flex-shrink: 0; }
+.em-item__del {
+  width: 30px; height: 30px; border-radius: 7px; flex-shrink: 0;
+  border: 1.5px solid var(--color-border, #e0e0e0);
+  background: var(--color-surface, white);
+  color: #c53030; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.em-item__del:hover { background: #fff5f5; border-color: #fecaca; }
+.em-add {
+  align-self: flex-start;
+  padding: 6px 12px; border-radius: 7px;
+  border: 1.5px dashed var(--color-border, #d0d0d0);
+  background: none; cursor: pointer;
+  font-size: 12.5px; color: var(--color-accent, #8B6F47);
+}
+.em-add:hover { border-color: var(--color-accent, #8B6F47); }
+
+.em-pay { align-self: flex-start; }
+.em-error { margin-bottom: 0; }
+
+.em-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  padding: 14px 20px;
+  border-top: 1px solid var(--color-border, #e8e8e8);
+}
+.em-total { font-size: 13px; color: var(--color-text-muted, #666); }
+.em-total strong { font-size: 18px; color: var(--color-text, #1a1a1a); margin-left: 6px; }
+.em-actions { display: flex; gap: 8px; }
+.em-save {
+  padding: 8px 22px; border-radius: 8px; border: none;
+  background: var(--color-accent, #8B6F47); color: white;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.em-save:disabled { opacity: 0.6; cursor: not-allowed; }
+
+@media (max-width: 600px) {
+  .em-grid, .em-grid--3 { grid-template-columns: 1fr; }
+  .em-item { flex-wrap: wrap; padding-bottom: 8px; border-bottom: 1px solid var(--color-border, #f0f0f0); }
+  .em-item__name { flex-basis: 100%; }
+  .em-item__staff { flex: 1; width: auto; }
 }
 
 /* ── Empty state ── */
