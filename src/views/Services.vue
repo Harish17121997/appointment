@@ -126,14 +126,52 @@
               </svg>
               Customer
             </div>
-            <div class="form-row">
+            <div class="form-row customer-search" ref="customerDropdownRef">
               <div class="form-group">
                 <label>Name</label>
-                <input v-model="bill.customerName" type="text" placeholder="Customer name" class="form-input" />
+                <input
+                  v-model="bill.customerName"
+                  type="text"
+                  placeholder="Customer name"
+                  class="form-input"
+                  autocomplete="off"
+                  @focus="openCustomerDropdown('name')"
+                  @input="openCustomerDropdown('name')"
+                  @keydown.escape="customerDropdownOpen = false"
+                />
               </div>
               <div class="form-group">
                 <label>Phone</label>
-                <input v-model="bill.customerPhone" type="tel" placeholder="9876543210" class="form-input" />
+                <input
+                  v-model="bill.customerPhone"
+                  type="tel"
+                  placeholder="9876543210"
+                  class="form-input"
+                  autocomplete="off"
+                  @focus="openCustomerDropdown('phone')"
+                  @input="openCustomerDropdown('phone')"
+                  @keydown.escape="customerDropdownOpen = false"
+                />
+              </div>
+
+              <div v-if="customerDropdownOpen && customerQuery" class="product-dropdown">
+                <div class="product-dropdown__list">
+                  <div v-if="customersLoading" class="product-dropdown__empty">Loading customers…</div>
+                  <div v-else-if="customersError" class="product-dropdown__empty">{{ customersError }}</div>
+                  <div v-else-if="filteredCustomers.length === 0" class="product-dropdown__empty">
+                    No existing customer matches "{{ customerQuery }}" — will be billed as new
+                  </div>
+                  <button
+                    v-for="c in filteredCustomers"
+                    :key="c.phone + '|' + c.name"
+                    type="button"
+                    class="product-dropdown__item"
+                    @mousedown.prevent="selectCustomer(c)"
+                  >
+                    <span class="product-dropdown__item-name">{{ c.name || 'Unnamed' }}</span>
+                    <span class="customer-search__phone">{{ c.phone || '—' }}</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1417,12 +1455,89 @@ async function deleteService() {
   }
 }
 
+// ── Customer search (Billing) ────────────────────────────────────────────────
+const customers = ref([])
+const customersLoading = ref(false)
+const customersLoaded = ref(false)
+const customersError = ref('')
+const customerDropdownOpen = ref(false)
+const customerSearchField = ref('name')   // which input the user is typing in
+const customerDropdownRef = ref(null)
+
+// Unique customers built from the report sheet (Customer + Phone columns).
+// Uses the existing reportGet action — with no date/month filter it returns every row.
+async function loadCustomers() {
+  if (customersLoaded.value || customersLoading.value) return
+  customersLoading.value = true
+  customersError.value = ''
+  try {
+    const res  = await fetch(`${API_URL}?action=reportGet`)
+    const data = await res.json()
+    if (!data.success) throw new Error(data.error || 'Failed to load customers')
+
+    const map = new Map()
+    for (const r of data.rows || []) {
+      let name    = String(r.customerName || '').trim()
+      const phone = String(r.customerPhone || '').replace(/^'/, '').trim()
+      if (name.toLowerCase() === 'walk-in') name = ''   // reportSave's default placeholder
+      if (!name && !phone) continue
+      const digits = phone.replace(/\D/g, '').slice(-10)
+      const key  = digits || 'name:' + name.toLowerCase()
+      const prev = map.get(key)
+      map.set(key, { name: name || prev?.name || '', phone: phone || prev?.phone || '' })
+    }
+    customers.value = [...map.values()].sort((a, b) => a.name.localeCompare(b.name))
+    customersLoaded.value = true
+  } catch (err) {
+    customersError.value = 'Could not load customers'
+    console.error('Failed to load customers', err)
+  } finally {
+    customersLoading.value = false
+  }
+}
+
+function openCustomerDropdown(field) {
+  customerSearchField.value = field
+  customerDropdownOpen.value = true
+  loadCustomers()
+}
+
+const customerQuery = computed(() =>
+  String(customerSearchField.value === 'phone' ? bill.customerPhone : bill.customerName).trim()
+)
+
+const filteredCustomers = computed(() => {
+  const q = customerQuery.value.toLowerCase()
+  if (!q) return []
+  const qDigits = q.replace(/\D/g, '')
+  return customers.value
+    .filter(c =>
+      c.name.toLowerCase().includes(q) ||
+      (qDigits && String(c.phone).replace(/\D/g, '').includes(qDigits))
+    )
+    .slice(0, 20)
+})
+
+function selectCustomer(c) {
+  bill.customerName  = c.name
+  bill.customerPhone = c.phone
+  customerDropdownOpen.value = false
+}
+
+function handleCustomerClickOutside(e) {
+  if (customerDropdownRef.value && !customerDropdownRef.value.contains(e.target)) {
+    customerDropdownOpen.value = false
+  }
+}
+
 onMounted(() => {
   document.addEventListener('mousedown', handleProductClickOutside)
+  document.addEventListener('mousedown', handleCustomerClickOutside)
   loadStaffNames()
 })
 onUnmounted(() => {
   document.removeEventListener('mousedown', handleProductClickOutside)
+  document.removeEventListener('mousedown', handleCustomerClickOutside)
 })
 
 const allCategories = computed(() => ['All', ...allServicesFlat.value.map(c => c.name)])
@@ -1925,6 +2040,7 @@ async function doneInvoice() {
     invoiceModal.show = false
     invoiceModal.paymentMethod = 'Cash'
     clearBill()
+    customersLoaded.value = false   // refetch so this customer shows up in search
     showToast('Invoice saved to report! ✓', 'success')
   } catch (err) {
     console.error('Report save failed:', err)
@@ -2780,6 +2896,9 @@ onMounted(async () => {
 .product-dropdown__item--selected { background: var(--color-accent-light, #f5ede4); color: var(--color-accent, #8B6F47); font-weight: 500; }
 .product-dropdown__item-name { flex: 1; text-align: left; }
 .product-dropdown__item-price { font-weight: 600; color: var(--color-accent, #8B6F47); margin-left: 12px; flex-shrink: 0; }
+
+.customer-search { position: relative; }
+.customer-search__phone { color: var(--color-text-muted, #888); margin-left: 12px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 
 .btn-add-item--product {
   background: var(--color-surface-2, #f7f7f7);

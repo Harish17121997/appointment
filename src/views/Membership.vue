@@ -56,6 +56,16 @@
           <input class="form-input" :value="previewExpiry" disabled />
         </div>
       </div>
+      <div class="form-row-2">
+        <div class="form-group">
+          <label class="form-label">Staff *</label>
+          <select class="form-input" v-model="form.staffName">
+            <option value="">{{ staffNames.length ? 'Select staff' : 'Loading staff…' }}</option>
+            <option v-for="s in staffNames" :key="s" :value="s">{{ s }}</option>
+          </select>
+          <span v-if="formErrors.staffName" class="form-error">{{ formErrors.staffName }}</span>
+        </div>
+      </div>
 
       <div class="inv-payment-row" style="padding:0; margin: 10px 0 18px;">
         <span class="inv-payment-label">Payment via</span>
@@ -120,6 +130,10 @@
           <div class="mem-detail__label">Plan</div>
           <div class="mem-detail__value">{{ selected.planName }}</div>
         </div>
+        <div v-if="selected.staffName" class="mem-detail__row">
+          <div class="mem-detail__label">Staff</div>
+          <div class="mem-detail__value">{{ selected.staffName }}</div>
+        </div>
         <div class="mem-detail__row">
           <div class="mem-detail__label">Status</div>
           <div class="mem-detail__value"><span class="status-badge" :class="statusClass(selected.status)">{{ selected.status }}</span></div>
@@ -182,7 +196,7 @@
       <table v-else-if="memberships.length" class="mem-table">
         <thead>
           <tr>
-            <th>Membership No</th><th>Customer</th><th>Phone</th><th>Plan</th>
+            <th>Membership No</th><th>Customer</th><th>Phone</th><th>Plan</th><th>Staff</th>
             <th class="right">Benefit</th><th class="right">Used</th><th class="right">Remaining</th>
             <th>Expiry</th><th>Status</th>
           </tr>
@@ -193,6 +207,7 @@
             <td>{{ m.customerName }}</td>
             <td>{{ m.customerPhone }}</td>
             <td>{{ m.planName }}</td>
+            <td>{{ m.staffName || '—' }}</td>
             <td class="right">₹{{ m.benefitAmount.toLocaleString('en-IN') }}</td>
             <td class="right">₹{{ m.totalUsed.toLocaleString('en-IN') }}</td>
             <td class="right">₹{{ m.remainingBalance.toLocaleString('en-IN') }}</td>
@@ -439,10 +454,22 @@ function statusClass(status) {
 
 // ══════════════ NEW MEMBERSHIP ══════════════
 const form = reactive({
-  planId: '', customerName: '', customerPhone: '',
+  planId: '', customerName: '', customerPhone: '', staffName: '',
   startDate: todayISO(), paymentMethod: 'Cash'
 })
 const formErrors = reactive({})
+
+// Staff names for the "Staff" dropdown (same source as Walk-in Billing)
+const staffNames = ref([])
+async function loadStaffNames() {
+  try {
+    const res  = await fetch(`${API_URL}?action=staffGet`)
+    const data = await res.json()
+    staffNames.value = (data.staff || []).map(s => s.name).filter(Boolean)
+  } catch (err) {
+    console.error('loadStaffNames error:', err)
+  }
+}
 
 const selectedPlanPreview = computed(() => plans.value.find(p => p.id === form.planId) || null)
 const previewExpiry = computed(() => {
@@ -456,6 +483,7 @@ function validateMembershipForm() {
   const errs = {}
   if (!form.customerName.trim()) errs.customerName = 'Name is required'
   if (!form.customerPhone.trim()) errs.customerPhone = 'Phone is required'
+  if (!form.staffName) errs.staffName = 'Please select staff'
   if (!form.planId) errs.planId = 'Please select a plan'
   Object.keys(formErrors).forEach(k => delete formErrors[k])
   Object.assign(formErrors, errs)
@@ -484,6 +512,7 @@ async function submitMembership() {
     customerName: form.customerName.trim(),
     customerPhone: form.customerPhone.trim(),
     planId: form.planId,
+    staffName: form.staffName,
     paidAmount: String(plan.paidAmount),
     startDate: isoToDDMMYYYY(form.startDate),
     paymentMethod: form.paymentMethod,
@@ -504,7 +533,7 @@ async function submitMembership() {
       customerName: form.customerName.trim(),
       customerPhone: form.customerPhone.trim(),
       items: `Membership: ${plan.name}`,
-      staffList: '',
+      staffList: form.staffName,
       subtotal: String(plan.paidAmount),
       discount: '0',
       discountReason: '',
@@ -534,6 +563,7 @@ async function submitMembership() {
   form.planId = ''
   form.customerName = ''
   form.customerPhone = ''
+  form.staffName = ''
   form.startDate = todayISO()
   form.paymentMethod = 'Cash'
 }
@@ -711,6 +741,7 @@ async function loadPlans() {
 }
 
 onMounted(async () => {
+  loadStaffNames()
   tabLoading.value = true
   try {
     await loadPlans()
