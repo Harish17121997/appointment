@@ -432,6 +432,17 @@
             Grand Total <strong>₹{{ editGrandTotal.toLocaleString('en-IN') }}</strong>
           </div>
           <div class="em-actions">
+            <button
+              class="em-wa"
+              @click="sendInvoiceWhatsApp"
+              :disabled="!waPhone"
+              :title="waPhone ? 'Send this invoice on WhatsApp' : 'Add a 10-digit phone number to send on WhatsApp'"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <path d="M17.47 14.38c-.3-.15-1.76-.87-2.03-.97-.27-.1-.47-.15-.67.15-.2.3-.77.97-.94 1.17-.17.2-.35.22-.64.07-.3-.15-1.26-.46-2.4-1.48-.88-.79-1.48-1.76-1.66-2.06-.17-.3-.02-.46.13-.6.13-.14.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.08-.15-.67-1.6-.92-2.2-.24-.58-.49-.5-.67-.51h-.57c-.2 0-.52.07-.8.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.08c.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.7.63.71.22 1.36.19 1.87.12.57-.09 1.76-.72 2.01-1.42.25-.7.25-1.29.17-1.42-.07-.12-.27-.2-.57-.35zM12.04 21.8h-.01a9.8 9.8 0 0 1-5-1.37l-.36-.21-3.72.98 1-3.63-.24-.37a9.8 9.8 0 0 1-1.5-5.22c0-5.42 4.41-9.83 9.84-9.83a9.77 9.77 0 0 1 6.95 2.88 9.77 9.77 0 0 1 2.88 6.96c0 5.42-4.41 9.83-9.84 9.83zm8.37-18.2A11.75 11.75 0 0 0 12.04.13C5.5.13.17 5.45.17 12c0 2.09.55 4.13 1.59 5.93L.07 24l6.22-1.63a11.84 11.84 0 0 0 5.75 1.46h.01c6.54 0 11.87-5.32 11.87-11.87 0-3.17-1.23-6.15-3.48-8.4z"/>
+              </svg>
+              WhatsApp
+            </button>
             <button class="rp-refresh-btn" @click="closeEdit" :disabled="edit.saving">Cancel</button>
             <button class="em-save" @click="saveEdit" :disabled="edit.saving">
               {{ edit.saving ? 'Saving…' : 'Save' }}
@@ -832,6 +843,51 @@ function openEdit(row) {
     paymentMethod: row.paymentMethod === 'UPI' ? 'UPI' : 'Cash',
   })
   loadStaffNames()
+}
+
+// ── WhatsApp invoice ──────────────────────────────────────────────────────
+// Builds the message from what is currently in the edit modal, so unsaved
+// corrections are included too.
+const waPhone = computed(() => {
+  let digits = String(edit.customerPhone || '').replace(/\D/g, '')
+  if (digits.length === 10) digits = '91' + digits
+  return digits.length >= 11 ? digits : ''
+})
+
+function buildInvoiceMessage() {
+  const inr  = n => '₹' + (Number(n) || 0).toLocaleString('en-IN')
+  const name = edit.customerName.trim() || 'Customer'
+  const lines = namedItems.value.map(i => {
+    const label = String(i.name).trim().replace(PRODUCT_TAG, '')
+    if (i.raw) return `• ${label}`
+    const qty = Math.max(1, Number(i.qty) || 1)
+    const amt = i.amount === '' || i.amount == null ? '' : ` — ${inr(i.amount)}`
+    return `• ${label}${qty > 1 ? ` x${qty}` : ''}${amt}`
+  })
+  const discount = Number(edit.discount) || 0
+  return [
+    `Hello *${name}*,`,
+    '',
+    'Thank you for visiting *Scintillate Unisex Salon*!',
+    '',
+    `*Invoice:* ${edit.invoiceNo}`,
+    `*Date:* ${edit.date}`,
+    '',
+    ...lines,
+    '',
+    `Subtotal: ${inr(editSubtotal.value)}`,
+    ...(discount > 0 ? [`Discount: -${inr(discount)}${edit.discountReason ? ` (${edit.discountReason})` : ''}`] : []),
+    `*Total: ${inr(editGrandTotal.value)}*`,
+    `Paid via: ${edit.paymentMethod}`,
+    '',
+    'See you again soon!',
+  ].join('\n')
+}
+
+function sendInvoiceWhatsApp() {
+  if (!waPhone.value) return
+  const url = `https://wa.me/${waPhone.value}?text=${encodeURIComponent(buildInvoiceMessage())}`
+  window.open(url, '_blank')
 }
 
 function closeEdit() {
@@ -1398,6 +1454,14 @@ onMounted(() => loadDay())
   font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .em-save:disabled { opacity: 0.6; cursor: not-allowed; }
+.em-wa {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 14px; border-radius: 8px; border: none;
+  background: #25D366; color: white;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.em-wa:hover:not(:disabled) { background: #1ebe5b; }
+.em-wa:disabled { opacity: 0.5; cursor: not-allowed; }
 
 @media (max-width: 600px) {
   .em-grid, .em-grid--3 { grid-template-columns: 1fr; }
