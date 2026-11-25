@@ -2003,9 +2003,10 @@ async function doneInvoice() {
   if (doneSaving.value) return
   doneSaving.value = true
 
-  // Build items summary: "Women's Hair Trim x1 @600 (Lucky); D-Tan x1 @500 (Priyanka)"
+  // Build items summary: "Women's Hair Trim x1 @600 (Lucky); Shampoo [Product] x1 @300 (Priyanka)"
+  // Products are tagged "[Product]" so the report keeps them out of staff service revenue.
   const itemsSummary = invoiceModal.items
-    .map(i => `${i.serviceName} x${i.qty} @${i.rate * i.qty}${i.staff ? ` (${i.staff})` : ''}`)
+    .map(i => `${i.serviceName}${i.isProduct ? ' [Product]' : ''} x${i.qty} @${i.rate * i.qty}${i.staff ? ` (${i.staff})` : ''}`)
     .join('; ')
 
   // Deduplicated staff list

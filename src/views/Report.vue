@@ -83,6 +83,10 @@
           <div class="sum-card__label">Total Revenue</div>
           <div class="sum-card__value">₹{{ totalRevenue.toLocaleString('en-IN') }}</div>
           <div class="sum-card__sub">{{ rows.length }} invoice{{ rows.length !== 1 ? 's' : '' }}</div>
+          <div class="sum-split" v-if="productTotal > 0">
+            <div class="sum-split__row"><span>Services</span><span>₹{{ serviceTotal.toLocaleString('en-IN') }}</span></div>
+            <div class="sum-split__row"><span>Products</span><span>₹{{ productTotal.toLocaleString('en-IN') }}</span></div>
+          </div>
         </div>
         <div class="sum-card sum-card--cash">
           <div class="sum-card__icon">
@@ -122,10 +126,15 @@
             <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
             <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
           </svg>
-          Staff-wise Revenue
+          Staff-wise Revenue <span class="section-card__hint">services only</span>
+          <span class="section-card__total">₹{{ serviceTotal.toLocaleString('en-IN') }}</span>
         </div>
         <div class="staff-table-wrap">
-          <table class="staff-table">
+          <table class="staff-table staff-table--fixed">
+            <colgroup>
+              <col class="col-name" /><col class="col-qty" /><col class="col-amt" />
+              <col class="col-pay" /><col class="col-pay" /><col class="col-share" />
+            </colgroup>
             <thead>
               <tr>
                 <th>Staff</th>
@@ -158,6 +167,59 @@
                       <div class="share-bar__fill" :style="{ width: s.sharePercent + '%' }"></div>
                     </div>
                     <span class="share-pct">{{ s.sharePercent }}%</span>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Product Sales (kept separate from staff service revenue) -->
+      <div class="section-card" v-if="productBreakdown.length > 0">
+        <div class="section-card__head">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <path d="M16 10a4 4 0 0 1-8 0"/>
+          </svg>
+          Product Sales
+          <span class="section-card__total">₹{{ productTotal.toLocaleString('en-IN') }}</span>
+        </div>
+        <div class="staff-table-wrap">
+          <table class="staff-table staff-table--fixed">
+            <colgroup>
+              <col class="col-name" /><col class="col-qty" /><col class="col-amt" />
+              <col class="col-pay" /><col class="col-pay" /><col class="col-share" />
+            </colgroup>
+            <thead>
+              <tr>
+                <th>Sold by</th>
+                <th class="right">Qty</th>
+                <th class="right">Amount</th>
+                <th class="right">Cash</th>
+                <th class="right">UPI</th>
+                <th class="right">Share</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="p in productBreakdown" :key="p.name">
+                <td>
+                  <div class="staff-name-cell">
+                    <div class="staff-avatar">{{ p.name[0] }}</div>
+                    {{ p.name }}
+                  </div>
+                </td>
+                <td class="right muted">{{ p.qty }}</td>
+                <td class="right bold">₹{{ p.amount.toLocaleString('en-IN') }}</td>
+                <td class="right"><span class="badge badge--cash">₹{{ p.cash.toLocaleString('en-IN') }}</span></td>
+                <td class="right"><span class="badge badge--upi">₹{{ p.upi.toLocaleString('en-IN') }}</span></td>
+                <td class="right">
+                  <div class="share-bar-wrap">
+                    <div class="share-bar">
+                      <div class="share-bar__fill" :style="{ width: p.sharePercent + '%' }"></div>
+                    </div>
+                    <span class="share-pct">{{ p.sharePercent }}%</span>
                   </div>
                 </td>
               </tr>
@@ -308,6 +370,9 @@
           <div class="em-items">
             <div v-for="(item, idx) in edit.items" :key="item.key" class="em-item">
               <input v-model="item.name" class="filter-input em-item__name" placeholder="Service name" />
+              <label v-if="!item.raw" class="em-item__product" title="Product sale (not counted in staff revenue)">
+                <input type="checkbox" v-model="item.isProduct" /> Product
+              </label>
               <template v-if="!item.raw">
                 <input v-model.number="item.qty" type="number" min="1" class="filter-input em-item__qty" title="Qty" />
                 <div class="em-amount">
@@ -414,6 +479,7 @@ async function loadDay() {
     // Convert "YYYY-MM-DD" → "DD-MM-YYYY" for the Apps Script
     const [y, m, d] = selectedDate.value.split('-')
     const dateParam = `${d}-${m}-${y}`
+    loadProductNames()
     const res  = await fetch(`${API_URL}?action=reportGet&date=${dateParam}`)
     const data = await res.json()
     if (!data.success) throw new Error(data.error || 'Failed to load report')
@@ -431,6 +497,7 @@ async function loadMonth() {
   error.value   = ''
   rows.value    = []
   try {
+    loadProductNames()
     const res  = await fetch(`${API_URL}?action=reportGet&month=${selectedMonth.value}`)
     const data = await res.json()
     if (!data.success) throw new Error(data.error || 'Failed to load report')
@@ -496,50 +563,86 @@ const upiRevenue   = computed(() => upiRows.value.reduce((s, r)  => s + Number(r
 const cashCount    = computed(() => cashRows.value.length)
 const upiCount     = computed(() => upiRows.value.length)
 
+// ── Product detection ─────────────────────────────────────────────────────
+// New bills tag products as "Shampoo [Product] x1 @300 (Lucky)".
+// Older bills have no tag, so we also match names against the product catalogue.
+const PRODUCT_TAG = /\s*\[Product\]\s*$/i
+const productNames = ref(new Set())
+
+async function loadProductNames() {
+  if (productNames.value.size) return
+  try {
+    const res  = await fetch(`${API_URL}?action=productGet`)
+    const data = await res.json()
+    productNames.value = new Set((data.products || []).map(p => String(p.name || '').trim().toLowerCase()).filter(Boolean))
+  } catch (err) {
+    console.error('Product fetch error:', err)
+  }
+}
+
+function splitProductName(name) {
+  const raw = String(name || '').trim()
+  if (PRODUCT_TAG.test(raw)) return { name: raw.replace(PRODUCT_TAG, ''), isProduct: true }
+  return { name: raw, isProduct: productNames.value.has(raw.toLowerCase()) }
+}
+
 // ── Staff Breakdown ───────────────────────────────────────────────────────
-// Each row has staffList = "Lucky, Priyanka" and items = "Service x1 (Lucky); Service x1 (Priyanka)"
-// We parse line items to attribute revenue per staff member
-const staffBreakdown = computed(() => {
-  const map = {}  // staffName → { revenue, cash, upi, services }
+// Each row has items = "Hair Trim x1 @600 (Lucky); Shampoo [Product] x1 @300 (Priyanka)"
+// Service lines are attributed to staff as "Revenue"; product lines are
+// collected separately as "Product Sales" and never added to staff revenue.
+const breakdown = computed(() => {
+  const map  = {}  // staffName → { revenue, cash, upi, services }   (services only)
+  const pmap = {}  // staffName → { amount, cash, upi, qty }         (products only)
+
+  const addStaff = (staff, amount, count, method) => {
+    if (!map[staff]) map[staff] = { revenue: 0, cash: 0, upi: 0, services: 0 }
+    map[staff].revenue  += amount
+    map[staff][method]  += amount
+    map[staff].services += count
+  }
+  const addProduct = (staff, amount, qty, method) => {
+    const key = staff || 'Unassigned'
+    if (!pmap[key]) pmap[key] = { amount: 0, cash: 0, upi: 0, qty: 0 }
+    pmap[key].amount += amount
+    pmap[key][method] += amount
+    pmap[key].qty    += qty
+  }
 
   rows.value.forEach(row => {
-    const method  = row.paymentMethod === 'UPI' ? 'upi' : 'cash'
-    const itemsStr = row.items || ''
+    const method     = row.paymentMethod === 'UPI' ? 'upi' : 'cash'
+    const grandTotal = Number(row.grandTotal || 0)
+    const parts      = (row.items || '').split(';').map(p => p.trim()).filter(Boolean)
 
-    // Parse items: "Women's Hair Trim x1 (Lucky); D-Tan x2 (Priyanka)"
-    const parts = itemsStr.split(';').map(p => p.trim()).filter(Boolean)
-
-    // Collect what each staff member did in this invoice
-    const staffInvoice = {}  // staffName → total for this invoice
-    let unattributed = 0        // items with no @rate and no staff tag (unparseable)
-    let unattributedAmount = 0  // items with a @rate but no staff tag
+    const staffInvoice = {}     // staffName → { amount, count } (services)
+    const products     = []     // { staff, amount, qty }
+    let unattributed       = 0  // unparseable service lines
+    let unattributedAmount = 0  // service lines with @rate but no staff
     let unattributedCount  = 0
-
-    // Track whether any item has a @rate so we know which format this invoice uses
     let hasRates = false
 
     parts.forEach(part => {
-      // New format with rate: "Service Name xQty @Amount (StaffName)"
-      const matchNew = part.match(/^(.+?)\s+x(\d+)\s+@(\d+(?:\.\d+)?)\s+\((.+?)\)$/)
-      // New format no staff: "Service Name xQty @Amount"
+      const matchNew        = part.match(/^(.+?)\s+x(\d+)\s+@(\d+(?:\.\d+)?)\s+\((.+?)\)$/)
       const matchNewNoStaff = part.match(/^(.+?)\s+x(\d+)\s+@(\d+(?:\.\d+)?)$/)
-      // Old format: "Service Name xQty (StaffName)"
-      const matchOld = part.match(/^(.+?)\s+x(\d+)\s+\((.+?)\)$/)
+      const matchOld        = part.match(/^(.+?)\s+x(\d+)\s+\((.+?)\)$/)
+      const m = matchNew || matchNewNoStaff || matchOld
+      const isProduct = m ? splitProductName(m[1]).isProduct : false
 
       if (matchNew) {
         hasRates = true
-        const amount = Number(matchNew[3])
-        const staff  = matchNew[4].trim()
+        const amount = Number(matchNew[3]), qty = Number(matchNew[2]), staff = matchNew[4].trim()
+        if (isProduct) { products.push({ staff, amount, qty }); return }
         if (!staffInvoice[staff]) staffInvoice[staff] = { amount: 0, count: 0 }
         staffInvoice[staff].amount += amount
-        staffInvoice[staff].count  += Number(matchNew[2])
+        staffInvoice[staff].count  += qty
       } else if (matchNewNoStaff) {
         hasRates = true
-        unattributedAmount += Number(matchNewNoStaff[3])
-        unattributedCount  += Number(matchNewNoStaff[2])
+        const amount = Number(matchNewNoStaff[3]), qty = Number(matchNewNoStaff[2])
+        if (isProduct) { products.push({ staff: '', amount, qty }); return }
+        unattributedAmount += amount
+        unattributedCount  += qty
       } else if (matchOld) {
-        const qty   = Number(matchOld[2])
-        const staff = matchOld[3].trim()
+        const qty = Number(matchOld[2]), staff = matchOld[3].trim()
+        if (isProduct) { products.push({ staff, amount: null, qty }); return }
         if (!staffInvoice[staff]) staffInvoice[staff] = { amount: 0, count: 0 }
         staffInvoice[staff].count += qty
       } else {
@@ -549,61 +652,47 @@ const staffBreakdown = computed(() => {
 
     const staffNames = Object.keys(staffInvoice)
 
-    if (staffNames.length === 0 && unattributedAmount === 0) {
-      // No staff listed — attribute to "Unassigned"
-      const key = 'Unassigned'
-      if (!map[key]) map[key] = { revenue: 0, cash: 0, upi: 0, services: 0 }
-      map[key].revenue  += Number(row.grandTotal || 0)
-      map[key][method]  += Number(row.grandTotal || 0)
-      map[key].services += parts.length
-      return
-    }
-
     if (hasRates) {
-      // Untagged items (rate but no staff) are split proportionally across
-      // this invoice's tagged staff — by their tagged-amount share, or evenly
-      // if no staff has a tagged amount yet.
+      // Untagged service lines are split across this invoice's service staff
       if (unattributedAmount > 0 && staffNames.length > 0) {
-        const taggedTotal = staffNames.reduce((s, staff) => s + staffInvoice[staff].amount, 0)
-        staffNames.forEach(staff => {
-          const share = taggedTotal > 0 ? staffInvoice[staff].amount / taggedTotal : 1 / staffNames.length
-          staffInvoice[staff].amount += unattributedAmount * share
-          staffInvoice[staff].count  += Math.round(unattributedCount * share)
+        const taggedTotal = staffNames.reduce((s, st) => s + staffInvoice[st].amount, 0)
+        staffNames.forEach(st => {
+          const share = taggedTotal > 0 ? staffInvoice[st].amount / taggedTotal : 1 / staffNames.length
+          staffInvoice[st].amount += unattributedAmount * share
+          staffInvoice[st].count  += Math.round(unattributedCount * share)
         })
       } else if (unattributedAmount > 0) {
-        // No tagged staff at all on this invoice — treat as Unassigned
         staffInvoice['Unassigned'] = { amount: unattributedAmount, count: unattributedCount }
       }
 
-      const finalStaffNames = Object.keys(staffInvoice)
-      // New format: use exact @amount per staff, scaled down proportionally
-      // by the invoice's discount so staff totals reconcile with grandTotal
-      const rawTotal = finalStaffNames.reduce((s, staff) => s + staffInvoice[staff].amount, 0)
-      const grandTotal = Number(row.grandTotal || 0)
-      const scale = rawTotal > 0 ? grandTotal / rawTotal : 1
-      finalStaffNames.forEach(staff => {
-        if (!map[staff]) map[staff] = { revenue: 0, cash: 0, upi: 0, services: 0 }
-        const amount = Math.round(staffInvoice[staff].amount * scale)
-        map[staff].revenue  += amount
-        map[staff][method]  += amount
-        map[staff].services += staffInvoice[staff].count
-      })
-    } else {
-      // Old format (no @rate): fall back to proportional split by item count
-      const totalItems = Object.values(staffInvoice).reduce((s, v) => s + v.count, 0) + unattributed
-      staffNames.forEach(staff => {
-        if (!map[staff]) map[staff] = { revenue: 0, cash: 0, upi: 0, services: 0 }
-        const share  = totalItems > 0 ? staffInvoice[staff].count / totalItems : 1 / staffNames.length
-        const amount = Math.round(Number(row.grandTotal || 0) * share)
-        map[staff].revenue  += amount
-        map[staff][method]  += amount
-        map[staff].services += staffInvoice[staff].count
-      })
+      // Discount is spread proportionally over services and products so that
+      // service revenue + product sales reconcile with grandTotal.
+      const finalStaff   = Object.keys(staffInvoice)
+      const serviceRaw   = finalStaff.reduce((s, st) => s + staffInvoice[st].amount, 0)
+      const productRaw   = products.reduce((s, p) => s + (p.amount || 0), 0)
+      const rawTotal     = serviceRaw + productRaw
+      const scale        = rawTotal > 0 ? grandTotal / rawTotal : 1
+      finalStaff.forEach(st => addStaff(st, Math.round(staffInvoice[st].amount * scale), staffInvoice[st].count, method))
+      products.forEach(p => addProduct(p.staff, Math.round((p.amount || 0) * scale), p.qty, method))
+      return
     }
+
+    // Old format (no @rate): split grandTotal by item count
+    const productQty  = products.reduce((s, p) => s + p.qty, 0)
+    const serviceQty  = staffNames.reduce((s, st) => s + staffInvoice[st].count, 0)
+    const totalItems  = serviceQty + productQty + unattributed
+    if (totalItems === 0 || (staffNames.length === 0 && productQty === 0)) {
+      addStaff('Unassigned', grandTotal, parts.length, method)
+      return
+    }
+    staffNames.forEach(st => {
+      addStaff(st, Math.round(grandTotal * staffInvoice[st].count / totalItems), staffInvoice[st].count, method)
+    })
+    products.forEach(p => addProduct(p.staff, Math.round(grandTotal * p.qty / totalItems), p.qty, method))
   })
 
   const total = Object.values(map).reduce((s, v) => s + v.revenue, 0) || 1
-  return Object.entries(map)
+  const staff = Object.entries(map)
     .map(([name, v]) => ({
       name,
       revenue:      v.revenue,
@@ -613,7 +702,19 @@ const staffBreakdown = computed(() => {
       sharePercent: Math.round((v.revenue / total) * 100),
     }))
     .sort((a, b) => b.revenue - a.revenue)
+
+  const ptotal = Object.values(pmap).reduce((s, v) => s + v.amount, 0) || 1
+  const productSales = Object.entries(pmap)
+    .map(([name, v]) => ({ name, ...v, sharePercent: Math.round((v.amount / ptotal) * 100) }))
+    .sort((a, b) => b.amount - a.amount)
+
+  return { staff, productSales }
 })
+
+const staffBreakdown   = computed(() => breakdown.value.staff)
+const productBreakdown = computed(() => breakdown.value.productSales)
+const productTotal     = computed(() => productBreakdown.value.reduce((s, p) => s + p.amount, 0))
+const serviceTotal     = computed(() => staffBreakdown.value.reduce((s, p) => s + p.revenue, 0))
 
 // ── Daily Summary (Month view) ────────────────────────────────────────────
 const dailySummary = computed(() => {
@@ -654,7 +755,7 @@ const edit = reactive({
   show: false, saving: false, error: '',
   date: '', invoiceNo: '', createdAt: '',
   customerName: '', customerPhone: '',
-  items: [],   // { key, name, qty, amount, staff, raw }
+  items: [],   // { key, name, qty, amount, staff, raw, isProduct }
   subtotal: 0, discount: 0, discountReason: '',
   paymentMethod: 'Cash',
 })
@@ -684,12 +785,12 @@ function parseItems(itemsStr) {
   return (itemsStr || '').split(';').map(p => p.trim()).filter(Boolean).map(part => {
     const key = ++itemKey
     let m = part.match(/^(.+?)\s+x(\d+)\s+@(\d+(?:\.\d+)?)\s+\((.+?)\)$/)
-    if (m) return { key, name: m[1], qty: Number(m[2]), amount: Number(m[3]), staff: m[4].trim(), raw: false }
+    if (m) return { key, ...splitProductName(m[1]), qty: Number(m[2]), amount: Number(m[3]), staff: m[4].trim(), raw: false }
     m = part.match(/^(.+?)\s+x(\d+)\s+@(\d+(?:\.\d+)?)$/)
-    if (m) return { key, name: m[1], qty: Number(m[2]), amount: Number(m[3]), staff: '', raw: false }
+    if (m) return { key, ...splitProductName(m[1]), qty: Number(m[2]), amount: Number(m[3]), staff: '', raw: false }
     m = part.match(/^(.+?)\s+x(\d+)\s+\((.+?)\)$/)
-    if (m) return { key, name: m[1], qty: Number(m[2]), amount: '', staff: m[3].trim(), raw: false }
-    return { key, name: part, qty: 1, amount: '', staff: '', raw: true }
+    if (m) return { key, ...splitProductName(m[1]), qty: Number(m[2]), amount: '', staff: m[3].trim(), raw: false }
+    return { key, name: part, qty: 1, amount: '', staff: '', raw: true, isProduct: false }
   })
 }
 
@@ -697,7 +798,7 @@ function serializeItems(items) {
   return items
     .filter(i => String(i.name || '').trim())
     .map(i => {
-      const name = String(i.name).trim()
+      const name = String(i.name).trim().replace(PRODUCT_TAG, '') + (i.isProduct ? ' [Product]' : '')
       if (i.raw) return name
       const qty    = Math.max(1, Number(i.qty) || 1)
       const amount = i.amount === '' || i.amount == null ? '' : ` @${Number(i.amount) || 0}`
@@ -738,7 +839,7 @@ function closeEdit() {
 }
 
 function addItem() {
-  edit.items.push({ key: ++itemKey, name: '', qty: 1, amount: 0, staff: '', raw: false })
+  edit.items.push({ key: ++itemKey, name: '', qty: 1, amount: 0, staff: '', raw: false, isProduct: false })
 }
 function removeItem(idx) {
   edit.items.splice(idx, 1)
@@ -986,6 +1087,22 @@ onMounted(() => loadDay())
 .sum-card--cash .sum-card__value  { color: #276749; }
 .sum-card--upi .sum-card__value   { color: #553c9a; }
 .sum-card--discount .sum-card__value { color: #c53030; }
+.sum-split {
+  margin-top: 8px; padding-top: 8px;
+  border-top: 1px dashed var(--color-border, #ededee);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.sum-split__row {
+  display: flex; justify-content: space-between; gap: 8px;
+  font-size: 12px; color: var(--color-text-muted, #999);
+}
+.sum-split__row span:last-child { font-weight: 600; color: var(--color-text, #1a1a1a); }
+.section-card__hint {
+  font-size: 11px; font-weight: 500; text-transform: none;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--color-surface-2, #f3f1ee); color: var(--color-text-muted, #888);
+}
+.section-card__total { margin-left: auto; font-weight: 700; color: var(--color-text, #1a1a1a); }
 .sum-card__sub {
   font-size: 12px;
   color: var(--color-text-muted, #999);
@@ -1030,6 +1147,14 @@ onMounted(() => loadDay())
   color: var(--color-text, #1a1a1a);
   vertical-align: middle;
 }
+.staff-table th:not(.right) { text-align: left; }
+.staff-table--fixed { table-layout: fixed; min-width: 640px; }
+.staff-table--fixed .col-name  { width: 28%; }
+.staff-table--fixed .col-qty   { width: 11%; }
+.staff-table--fixed .col-amt   { width: 15%; }
+.staff-table--fixed .col-pay   { width: 14%; }
+.staff-table--fixed .col-share { width: 18%; }
+.staff-table--fixed td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .staff-table tr:last-child td { border-bottom: none; }
 .staff-table tr:hover td { background: var(--color-accent-light, #faf6f1); }
 
@@ -1237,6 +1362,7 @@ onMounted(() => loadDay())
 }
 .em-item__amt   { width: 90px; }
 .em-item__staff { width: 130px; flex-shrink: 0; }
+.em-item__product { display: flex; align-items: center; gap: 4px; font-size: 12px; white-space: nowrap; flex-shrink: 0; cursor: pointer; }
 .em-item__del {
   width: 30px; height: 30px; border-radius: 7px; flex-shrink: 0;
   border: 1.5px solid var(--color-border, #e0e0e0);
